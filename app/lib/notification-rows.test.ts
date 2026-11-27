@@ -15,6 +15,29 @@ describe("notification deep links", () => {
     expect(notificationDeepLink("refund-request-decided")).toBe("/settings");
   });
 
+  it("sends a lesson comment to the Instructor's Q&A queue", () => {
+    expect(notificationDeepLink("lesson-comment-posted")).toBe(
+      "/instructor/questions"
+    );
+  });
+
+  it("sends a comment reply to the lesson thread it happened in", () => {
+    expect(
+      notificationDeepLink("comment-reply-posted", {
+        courseTitle: "Introduction to TypeScript",
+        courseSlug: "introduction-to-typescript",
+        lessonId: 5,
+        lessonTitle: "Union Narrowing",
+      })
+    ).toBe("/courses/introduction-to-typescript/lessons/5");
+  });
+
+  it("falls back to Browse Courses when a reply's data lost the thread fields", () => {
+    expect(
+      notificationDeepLink("comment-reply-posted", { courseTitle: "Lost" })
+    ).toBe("/courses");
+  });
+
   it("falls back to Browse Courses for a workflow the map does not know", () => {
     expect(notificationDeepLink("some-future-event")).toBe("/courses");
   });
@@ -113,6 +136,62 @@ describe("formatNotificationRow", () => {
       contextLine: "Introduction to TypeScript",
       iconType: "refund",
       deepLink: "/settings",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a lesson comment into actor, action, course and the Q&A queue link", () => {
+    const input: NotificationRowInput = {
+      id: "item-6",
+      workflowKey: "lesson-comment-posted",
+      actorName: "Emma Wilson",
+      actorAvatarUrl: "https://cdn.example.com/emma.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseTitle: "Introduction to TypeScript",
+        lessonTitle: "Union Narrowing",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-6",
+      state: "unread",
+      actorName: "Emma Wilson",
+      actorAvatarUrl: "https://cdn.example.com/emma.png",
+      actionText: "commented on your lesson",
+      contextLine: "Introduction to TypeScript",
+      iconType: "comment",
+      deepLink: "/instructor/questions",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a comment reply into actor, action, course and the lesson thread link", () => {
+    const input: NotificationRowInput = {
+      id: "item-7",
+      workflowKey: "comment-reply-posted",
+      actorName: "Sarah Chen",
+      actorAvatarUrl: "https://cdn.example.com/sarah.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseTitle: "Introduction to TypeScript",
+        courseSlug: "introduction-to-typescript",
+        lessonId: 5,
+        lessonTitle: "Union Narrowing",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-7",
+      state: "unread",
+      actorName: "Sarah Chen",
+      actorAvatarUrl: "https://cdn.example.com/sarah.png",
+      actionText: "replied to your comment",
+      contextLine: "Introduction to TypeScript",
+      iconType: "reply",
+      deepLink: "/courses/introduction-to-typescript/lessons/5",
       insertedAt: "2026-11-27T10:00:00.000Z",
     });
   });

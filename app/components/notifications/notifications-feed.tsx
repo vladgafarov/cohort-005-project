@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Bell, Check, CheckCheck, Receipt } from "lucide-react";
+import { Bell, Check, CheckCheck, MessageSquare, Receipt, Reply } from "lucide-react";
 import { useNotificationStore } from "@knocklabs/react";
 import type { useNotifications } from "@knocklabs/react";
 import { cn } from "~/lib/utils";
@@ -51,6 +51,10 @@ function eventIcon(iconType: NotificationIconType): ReactNode {
   switch (iconType) {
     case "refund":
       return <Receipt className="size-3" />;
+    case "comment":
+      return <MessageSquare className="size-3" />;
+    case "reply":
+      return <Reply className="size-3" />;
     case "bell":
       return <Bell className="size-3" />;
   }

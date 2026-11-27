@@ -8,6 +8,8 @@ import {
   raiseRefundRequest,
 } from "~/lib/refunds.server";
 import {
+  buildCommentReplyPostedNotification,
+  buildLessonCommentPostedNotification,
   buildRefundRequestDecidedNotification,
   buildRefundRequestRaisedNotification,
 } from "./notifications.server";
@@ -64,6 +66,50 @@ function raiseOpenRequest(purchaseId: number, buyerId: number) {
     throw new Error(`fixture could not raise the request: ${raised.error}`);
   }
   return raised;
+}
+
+// The lesson the comment Events hang off: one module, one lesson on the
+// seeded course.
+function addLesson(title: string) {
+  const module = db
+    .insert(schema.modules)
+    .values({ courseId: base.course.id, title: "Module 1", position: 1 })
+    .returning()
+    .get();
+  return db
+    .insert(schema.lessons)
+    .values({ moduleId: module.id, title, position: 1 })
+    .returning()
+    .get();
+}
+
+function addStudent(name: string) {
+  return db
+    .insert(schema.users)
+    .values({
+      name,
+      email: `${name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+      role: UserRole.Student,
+    })
+    .returning()
+    .get();
+}
+
+// The insert shape both comment routes write — the lesson page's comment
+// form and the Q&A queue's reply form duplicate the insert logic, so the
+// fixture mirrors it: parentId null for a top-level comment, set for a
+// reply.
+function addComment(
+  userId: number,
+  lessonId: number,
+  parentId: number | null,
+  body: string
+) {
+  return db
+    .insert(schema.comments)
+    .values({ userId, lessonId, parentId, body })
+    .returning()
+    .get();
 }
 
 beforeEach(() => {
@@ -360,6 +406,326 @@ describe("buildRefundRequestDecidedNotification", () => {
       pat.id,
       RefundStatus.Approved,
       "Refunded in full.",
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+});
+
+describe("buildLessonCommentPostedNotification", () => {
+  it("notifies the course's Instructor when a Student comments on their lesson", () => {
+    const lesson = addLesson("Union Narrowing");
+    const comment = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+
+    const notification = buildLessonCommentPostedNotification(
+      db,
+      comment.id,
+      NOW
+    );
+
+    expect(notification?.workflowKey).toBe("lesson-comment-posted");
+    expect(notification?.recipients).toEqual([
+      {
+        id: base.instructor.id,
+        name: "Test Instructor",
+        email: "instructor@example.com",
+        avatarUrl: null,
+      },
+    ]);
+    expect(notification?.actor).toEqual({
+      id: base.user.id,
+      name: "Test User",
+      email: "test@example.com",
+      avatarUrl: null,
+    });
+  });
+
+  it("never notifies the commenter when the Instructor comments on their own lesson", () => {
+    const lesson = addLesson("Union Narrowing");
+    const comment = addComment(
+      base.instructor.id,
+      lesson.id,
+      null,
+      "A note on generics."
+    );
+
+    const notification = buildLessonCommentPostedNotification(
+      db,
+      comment.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("carries the course and the lesson as the context", () => {
+    const lesson = addLesson("Union Narrowing");
+    const comment = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+
+    const notification = buildLessonCommentPostedNotification(
+      db,
+      comment.id,
+      NOW
+    );
+
+    expect(notification?.data).toEqual({
+      courseTitle: base.course.title,
+      lessonTitle: lesson.title,
+    });
+  });
+
+  it("keeps the trigger data flat — scalar values only, safe for the compact feed", () => {
+    const lesson = addLesson("Union Narrowing");
+    const comment = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+
+    const notification = buildLessonCommentPostedNotification(
+      db,
+      comment.id,
+      NOW
+    );
+
+    const values = Object.values(notification?.data ?? {});
+    expect(values.length).toBeGreaterThan(0);
+    expect(
+      values.every(
+        (value) =>
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+      )
+    ).toBe(true);
+  });
+
+  it("builds nothing for a reply — a reply is the comment-reply Event's insert shape", () => {
+    const lesson = addLesson("Union Narrowing");
+    const question = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+    const reply = addComment(
+      base.instructor.id,
+      lesson.id,
+      question.id,
+      "Narrowing happens at the branch."
+    );
+
+    const notification = buildLessonCommentPostedNotification(
+      db,
+      reply.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing for a comment that does not exist", () => {
+    const notification = buildLessonCommentPostedNotification(
+      db,
+      999999,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+});
+
+describe("buildCommentReplyPostedNotification", () => {
+  it("notifies the parent comment's author when someone replies to it", () => {
+    const lesson = addLesson("Union Narrowing");
+    const question = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+    const rio = addStudent("Rio Student");
+    const reply = addComment(
+      rio.id,
+      lesson.id,
+      question.id,
+      "Same question here."
+    );
+
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      reply.id,
+      NOW
+    );
+
+    expect(notification?.workflowKey).toBe("comment-reply-posted");
+    expect(notification?.recipients).toEqual([
+      {
+        id: base.user.id,
+        name: "Test User",
+        email: "test@example.com",
+        avatarUrl: null,
+      },
+    ]);
+    expect(notification?.actor).toEqual({
+      id: rio.id,
+      name: "Rio Student",
+      email: rio.email,
+      avatarUrl: null,
+    });
+  });
+
+  it("notifies the Student who asked when the Instructor answers in the Q&A queue", () => {
+    const lesson = addLesson("Union Narrowing");
+    const question = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+    // The Q&A queue's answer is a reply to the question, so the question's
+    // author — the parent-comment author — is the one to notify.
+    const answer = addComment(
+      base.instructor.id,
+      lesson.id,
+      question.id,
+      "Narrowing happens at the branch."
+    );
+
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      answer.id,
+      NOW
+    );
+
+    expect(notification?.recipients.map((recipient) => recipient.id)).toEqual([
+      base.user.id,
+    ]);
+    expect(notification?.actor.id).toBe(base.instructor.id);
+  });
+
+  it("never notifies the replier when they reply to their own comment", () => {
+    const lesson = addLesson("Union Narrowing");
+    const question = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+    const reply = addComment(
+      base.user.id,
+      lesson.id,
+      question.id,
+      "Follow-up: and for objects?"
+    );
+
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      reply.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing for a top-level comment — a top-level comment is the lesson-comment Event's insert shape", () => {
+    const lesson = addLesson("Union Narrowing");
+    const comment = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      comment.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("carries the course, the lesson and the thread as the context", () => {
+    const lesson = addLesson("Union Narrowing");
+    const question = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+    const rio = addStudent("Rio Student");
+    const reply = addComment(
+      rio.id,
+      lesson.id,
+      question.id,
+      "Same question here."
+    );
+
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      reply.id,
+      NOW
+    );
+
+    expect(notification?.data).toEqual({
+      courseTitle: base.course.title,
+      courseSlug: base.course.slug,
+      lessonId: lesson.id,
+      lessonTitle: lesson.title,
+    });
+  });
+
+  it("keeps the trigger data flat — scalar values only, safe for the compact feed", () => {
+    const lesson = addLesson("Union Narrowing");
+    const question = addComment(
+      base.user.id,
+      lesson.id,
+      null,
+      "How do unions narrow?"
+    );
+    const rio = addStudent("Rio Student");
+    const reply = addComment(
+      rio.id,
+      lesson.id,
+      question.id,
+      "Same question here."
+    );
+
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      reply.id,
+      NOW
+    );
+
+    const values = Object.values(notification?.data ?? {});
+    expect(values.length).toBeGreaterThan(0);
+    expect(
+      values.every(
+        (value) =>
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+      )
+    ).toBe(true);
+  });
+
+  it("builds nothing for a reply that does not exist", () => {
+    const notification = buildCommentReplyPostedNotification(
+      db,
+      999999,
       NOW
     );
 
