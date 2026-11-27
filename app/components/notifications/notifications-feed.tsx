@@ -6,6 +6,7 @@ import {
   Check,
   CheckCheck,
   MessageSquare,
+  PlayCircle,
   Receipt,
   Reply,
   Star,
@@ -73,6 +74,9 @@ function eventIcon(iconType: NotificationIconType): ReactNode {
     // The same book the app marks every course with.
     case "course":
       return <BookOpen className="size-3" />;
+    // The play the new lesson invites its enrolled Students to.
+    case "lesson":
+      return <PlayCircle className="size-3" />;
     case "bell":
       return <Bell className="size-3" />;
   }

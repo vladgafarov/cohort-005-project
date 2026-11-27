@@ -29,6 +29,8 @@ import {
 import { data, isRouteErrorResponse } from "react-router";
 import { z } from "zod";
 import { parseFormData, parseParams } from "~/lib/validation";
+import { triggerWorkflow } from "~/lib/knock.server";
+import { buildNewLessonAvailableNotification } from "~/lib/notifications.server";
 
 const instructorLessonParamsSchema = z.object({
   courseId: z.coerce.number().int(),
@@ -223,14 +225,35 @@ export async function action({ params, request }: Route.ActionArgs) {
       );
     }
 
+    const contentToWrite = content ?? null;
+    const videoUrlToWrite = videoUrl || null;
+
     updateLesson(
       lessonId,
       null,
-      content ?? null,
-      videoUrl || null,
+      contentToWrite,
+      videoUrlToWrite,
       durationMinutes,
       githubRepoUrl || null
     );
+
+    // A save that brings this lesson its first consumable material — the
+    // pre-update row above had neither content nor a video URL, and this
+    // save brings at least one — is the moment the lesson becomes worth
+    // watching, and every enrolled Student hears about it. The Instructor
+    // (or Admin) saving the lesson never notifies themselves, and a
+    // failed trigger is logged and swallowed inside the wrapper, so the
+    // save itself always succeeds.
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lessonId,
+      lesson,
+      { content: contentToWrite, videoUrl: videoUrlToWrite },
+      currentUserId,
+      new Date()
+    );
+    if (notification) await triggerWorkflow(notification);
+
     return { success: true };
   }
 

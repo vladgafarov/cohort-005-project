@@ -44,6 +44,10 @@ export const SEAT_CLAIMED_WORKFLOW_KEY = "seat-claimed";
 // screens.
 export const COURSE_STATUS_CHANGED_WORKFLOW_KEY = "course-status-changed";
 
+// "New lesson available" — every user holding an Enrollment on the course
+// is notified when a save brings a lesson its first consumable material.
+export const NEW_LESSON_AVAILABLE_WORKFLOW_KEY = "new-lesson-available";
+
 // ─── Deep links ───
 // One target per Event: clicking a Notification takes the recipient to the
 // thing it is about. The map is keyed by workflow key and covered by name in
@@ -56,8 +60,9 @@ export const COURSE_STATUS_CHANGED_WORKFLOW_KEY = "course-status-changed";
 
 type DeepLinkTarget = string | ((data: Record<string, unknown> | null) => string);
 
-// The lesson thread a comment conversation lives in — the one place a
-// reply's reader needs to land to keep the conversation going.
+// The lesson page a Notification about one lesson points at: the thread
+// a reply's reader needs to land in to keep the conversation going, and
+// the new lesson a first-material save just made worth watching.
 function lessonThreadLink(data: Record<string, unknown> | null): string {
   const courseSlug = data?.courseSlug;
   const lessonId = data?.lessonId;
@@ -84,6 +89,9 @@ const NOTIFICATION_DEEP_LINKS: Record<string, DeepLinkTarget> = {
       ? `/instructor/${courseId}`
       : FALLBACK_DEEP_LINK;
   },
+  // The lesson itself: a new-lesson row sends its recipient straight to
+  // the lesson that just became worth watching.
+  [NEW_LESSON_AVAILABLE_WORKFLOW_KEY]: lessonThreadLink,
 };
 
 const FALLBACK_DEEP_LINK = "/courses";
@@ -109,6 +117,7 @@ export type NotificationIconType =
   | "star"
   | "seat"
   | "course"
+  | "lesson"
   | "bell";
 
 export type NotificationRowInput = {
@@ -141,6 +150,7 @@ const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "rated your course",
   [SEAT_CLAIMED_WORKFLOW_KEY]: "claimed a Seat",
   [COURSE_STATUS_CHANGED_WORKFLOW_KEY]: "changed your course's status",
+  [NEW_LESSON_AVAILABLE_WORKFLOW_KEY]: "published a new lesson",
 };
 
 const FALLBACK_ACTION_TEXT = "sent you a notification";
@@ -193,6 +203,7 @@ const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "star",
   [SEAT_CLAIMED_WORKFLOW_KEY]: "seat",
   [COURSE_STATUS_CHANGED_WORKFLOW_KEY]: "course",
+  [NEW_LESSON_AVAILABLE_WORKFLOW_KEY]: "lesson",
 };
 
 const FALLBACK_ICON_TYPE: NotificationIconType = "bell";

@@ -13,6 +13,7 @@ import {
   buildCourseRatingLeftNotification,
   buildCourseStatusChangedNotification,
   buildLessonCommentPostedNotification,
+  buildNewLessonAvailableNotification,
   buildRefundRequestDecidedNotification,
   buildRefundRequestRaisedNotification,
   buildSeatClaimedNotification,
@@ -94,6 +95,20 @@ function addStudent(name: string) {
       name,
       email: `${name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
       role: UserRole.Student,
+    })
+    .returning()
+    .get();
+}
+
+// An Enrollment on the seeded course — the row the new-lesson Event's
+// recipients are read from, data and not role.
+function enroll(userId: number) {
+  return db
+    .insert(schema.enrollments)
+    .values({
+      userId,
+      courseId: base.course.id,
+      enrolledAt: daysBefore(3),
     })
     .returning()
     .get();
@@ -1075,6 +1090,274 @@ describe("buildCourseStatusChangedNotification", () => {
       CourseStatus.Draft,
       CourseStatus.Published,
       alex.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+});
+
+describe("buildNewLessonAvailableNotification", () => {
+  // The material snapshots the builder gates on, written the way the
+  // lesson editor's action writes them: `content ?? null` maps a missing
+  // content field to "nothing written" but keeps an empty string, and
+  // `videoUrl || null` maps an empty video URL to "keep the old one".
+  // An empty lesson row and a first-material save are the pair the
+  // Event fires for.
+  const EMPTY_LESSON = { content: null, videoUrl: null };
+  const FIRST_MATERIAL = {
+    content: "The lesson's first material.",
+    videoUrl: null,
+  };
+
+  // The Team Admin world the data-not-role tests hang off: a buyer of a
+  // Team Licence whose Seat someone else claimed. The licence grants
+  // Seats, not an Enrollment, so only the buyer's own Enrollment can
+  // ever make them a recipient of this Event.
+  function buyTeamLicenceWithSeat(buyerId: number, claimerId: number) {
+    const team = db.insert(schema.teams).values({}).returning().get();
+    db.insert(schema.teamMembers)
+      .values({ teamId: team.id, userId: buyerId, role: schema.TeamMemberRole.Admin })
+      .returning()
+      .get();
+    const licence = db
+      .insert(schema.purchases)
+      .values({
+        userId: buyerId,
+        courseId: base.course.id,
+        amountPaid: 39500,
+        createdAt: daysBefore(10),
+      })
+      .returning()
+      .get();
+    db.insert(schema.coupons)
+      .values({
+        teamId: team.id,
+        courseId: base.course.id,
+        code: "TEAM-TEST-22-01",
+        purchaseId: licence.id,
+        redeemedByUserId: claimerId,
+        redeemedAt: daysBefore(2),
+      })
+      .returning()
+      .get();
+  }
+
+  it("notifies every user holding an Enrollment on the course", () => {
+    const lesson = addLesson("Getting Started");
+    const emma = addStudent("Emma Student");
+    const liam = addStudent("Liam Student");
+    const sophia = addStudent("Sophia Student");
+    enroll(emma.id);
+    enroll(liam.id);
+    enroll(sophia.id);
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    expect(notification).not.toBeNull();
+    expect(notification?.workflowKey).toBe("new-lesson-available");
+    expect(notification?.recipients).toEqual([
+      {
+        id: emma.id,
+        name: "Emma Student",
+        email: emma.email,
+        avatarUrl: null,
+      },
+      {
+        id: liam.id,
+        name: "Liam Student",
+        email: liam.email,
+        avatarUrl: null,
+      },
+      {
+        id: sophia.id,
+        name: "Sophia Student",
+        email: sophia.email,
+        avatarUrl: null,
+      },
+    ]);
+  });
+
+  it("includes a Team Admin who also holds their own Enrollment", () => {
+    const lesson = addLesson("Getting Started");
+    const bossy = addStudent("Bossy Team Admin");
+    const olivia = addStudent("Olivia Seat Claimer");
+    buyTeamLicenceWithSeat(bossy.id, olivia.id);
+    buyForSelf(bossy.id); // his own Individual Purchase on the course…
+    enroll(bossy.id); // …and the Enrollment it gives the buyer
+    enroll(olivia.id); // the Enrollment Olivia's claimed Seat gave her
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    // The Team Licence's purchase alone adds no recipient; the Team
+    // Admin's own Enrollment does.
+    expect(notification?.recipients).toEqual([
+      {
+        id: bossy.id,
+        name: "Bossy Team Admin",
+        email: bossy.email,
+        avatarUrl: null,
+      },
+      {
+        id: olivia.id,
+        name: "Olivia Seat Claimer",
+        email: olivia.email,
+        avatarUrl: null,
+      },
+    ]);
+  });
+
+  it("never notifies a Team Licence buyer for the Seats they granted to others", () => {
+    const lesson = addLesson("Getting Started");
+    const bossy = addStudent("Bossy Team Admin");
+    const olivia = addStudent("Olivia Seat Claimer");
+    buyTeamLicenceWithSeat(bossy.id, olivia.id);
+    enroll(olivia.id); // the claim's Enrollment — its row is Olivia's
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    expect(notification?.recipients.map((recipient) => recipient.id)).toEqual([
+      olivia.id,
+    ]);
+  });
+
+  it("never notifies the saving Instructor, even when they hold an Enrollment", () => {
+    const lesson = addLesson("Getting Started");
+    const emma = addStudent("Emma Student");
+    enroll(emma.id);
+    enroll(base.instructor.id); // the saver also holds an Enrollment
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    expect(notification?.recipients.map((recipient) => recipient.id)).toEqual([
+      emma.id,
+    ]);
+  });
+
+  it("carries the saving Instructor as the actor with the lesson and course as the context", () => {
+    const lesson = addLesson("Getting Started");
+    const emma = addStudent("Emma Student");
+    enroll(emma.id);
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    expect(notification?.actor).toEqual({
+      id: base.instructor.id,
+      name: "Test Instructor",
+      email: "instructor@example.com",
+      avatarUrl: null,
+    });
+    expect(notification?.data).toEqual({
+      courseTitle: "Test Course",
+      courseSlug: "test-course",
+      lessonId: lesson.id,
+      lessonTitle: "Getting Started",
+    });
+  });
+
+  it("keeps the trigger data flat — scalar values only, safe for the compact feed", () => {
+    const lesson = addLesson("Getting Started");
+    const emma = addStudent("Emma Student");
+    enroll(emma.id);
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    const values = Object.values(notification?.data ?? {});
+    expect(values.length).toBeGreaterThan(0);
+    expect(
+      values.every(
+        (value) =>
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+      )
+    ).toBe(true);
+  });
+
+  it("builds nothing when the save does not bring the lesson's first material", () => {
+    const lesson = addLesson("Getting Started");
+    const emma = addStudent("Emma Student");
+    enroll(emma.id);
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      { content: "The material that already exists.", videoUrl: null },
+      { content: "The material, improved.", videoUrl: null },
+      base.instructor.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing when no user holds an Enrollment on the course", () => {
+    const lesson = addLesson("Getting Started");
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      lesson.id,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing for a lesson that does not exist", () => {
+    const emma = addStudent("Emma Student");
+    enroll(emma.id);
+
+    const notification = buildNewLessonAvailableNotification(
+      db,
+      999999,
+      EMPTY_LESSON,
+      FIRST_MATERIAL,
+      base.instructor.id,
       NOW
     );
 

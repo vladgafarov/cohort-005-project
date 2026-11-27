@@ -3,6 +3,7 @@ import {
   comments,
   coupons,
   courses,
+  enrollments,
   lessons,
   modules,
   purchases,
@@ -14,11 +15,13 @@ import {
 } from "~/db/schema";
 import type { Db } from "~/lib/refunds.server";
 import type { UserIdentity, WorkflowTrigger } from "~/lib/knock.server";
+import { bringsFirstMaterial, type LessonMaterial } from "~/lib/lesson-material";
 import {
   COMMENT_REPLY_POSTED_WORKFLOW_KEY,
   COURSE_RATING_LEFT_WORKFLOW_KEY,
   COURSE_STATUS_CHANGED_WORKFLOW_KEY,
   LESSON_COMMENT_POSTED_WORKFLOW_KEY,
+  NEW_LESSON_AVAILABLE_WORKFLOW_KEY,
   REFUND_REQUEST_DECIDED_WORKFLOW_KEY,
   REFUND_REQUEST_RAISED_WORKFLOW_KEY,
   SEAT_CLAIMED_WORKFLOW_KEY,
@@ -50,11 +53,12 @@ function identityOf(user: typeof users.$inferSelect): UserIdentity {
 }
 
 // The course a lesson belongs to, with the lesson's own title: the context
-// every comment Event carries — which course, which lesson, and (through
+// every lesson Event carries — which course, which lesson, and (through
 // instructorId) who to notify about a fresh comment.
 function courseOfLesson(db: Db, lessonId: number) {
   return db
     .select({
+      courseId: courses.id,
       instructorId: courses.instructorId,
       courseTitle: courses.title,
       courseSlug: courses.slug,
@@ -494,6 +498,80 @@ export function buildCourseStatusChangedNotification(
       fromStatus,
       toStatus,
       status: toStatus,
+    },
+  };
+}
+
+/**
+ * "New lesson available": a save has just brought a lesson its first
+ * consumable material, and every user holding an Enrollment on the
+ * course hears about it, ready to watch. "Lesson created" would point
+ * Students at a blank page, so the Event is the first-material save —
+ * gated here by the pure rule in app/lib/lesson-material.ts on the two
+ * material snapshots the lesson editor's action holds: the pre-update
+ * lesson row, and what the save brings. The saver is the actor, never a
+ * recipient. Recipients are decided by data, not role checks — a Team
+ * Admin who also holds their own Enrollment is notified, a Team Licence
+ * buyer is never notified for the Seats they granted to others — and
+ * the Notification carries the lesson and the course, so the row
+ * deep-links straight to the lesson.
+ */
+export function buildNewLessonAvailableNotification(
+  db: Db,
+  lessonId: number,
+  preSaveMaterial: LessonMaterial,
+  savedMaterial: LessonMaterial,
+  savingUserId: number,
+  now: Date
+): WorkflowTrigger | null {
+  // The gate: this is the save that made the lesson worth watching. An
+  // ordinary edit over material that already exists stays silent; a
+  // blanked-then-restored lesson fires once more, the accepted edge.
+  if (!bringsFirstMaterial(preSaveMaterial, savedMaterial)) return null;
+
+  const context = courseOfLesson(db, lessonId);
+  const actor = db
+    .select()
+    .from(users)
+    .where(eq(users.id, savingUserId))
+    .get();
+
+  if (!context || !actor) return null;
+
+  // Recipients are decided by data, not role checks: every user holding
+  // an Enrollment on the course, minus the actor — the actor never
+  // receives the Notification for their own action. Enrollments are not
+  // unique per (user, course), so a user holding two rows is told once.
+  const enrolled = db
+    .select({ user: users })
+    .from(enrollments)
+    .innerJoin(users, eq(enrollments.userId, users.id))
+    .where(eq(enrollments.courseId, context.courseId))
+    .orderBy(asc(users.id))
+    .all();
+
+  const recipients: UserIdentity[] = [];
+  const told = new Set<number>();
+  for (const { user } of enrolled) {
+    if (user.id === savingUserId || told.has(user.id)) continue;
+    told.add(user.id);
+    recipients.push(identityOf(user));
+  }
+
+  if (recipients.length === 0) return null;
+
+  return {
+    workflowKey: NEW_LESSON_AVAILABLE_WORKFLOW_KEY,
+    recipients,
+    actor: identityOf(actor),
+    // Flat scalars only: the feed's compact mode strips nested arrays and
+    // objects out of item data. courseSlug and lessonId are the pair the
+    // row's deep link reads to land on the lesson.
+    data: {
+      courseTitle: context.courseTitle,
+      courseSlug: context.courseSlug,
+      lessonId,
+      lessonTitle: context.lessonTitle,
     },
   };
 }

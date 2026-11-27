@@ -61,6 +61,23 @@ describe("notification deep links", () => {
   it("keeps a course-status Notification that lost its course on Browse Courses", () => {
     expect(notificationDeepLink("course-status-changed", null)).toBe("/courses");
   });
+
+  it("sends a new lesson to the lesson it is about", () => {
+    expect(
+      notificationDeepLink("new-lesson-available", {
+        courseTitle: "Introduction to TypeScript",
+        courseSlug: "introduction-to-typescript",
+        lessonId: 5,
+        lessonTitle: "Union Narrowing",
+      })
+    ).toBe("/courses/introduction-to-typescript/lessons/5");
+  });
+
+  it("keeps a new-lesson Notification that lost its lesson on Browse Courses", () => {
+    expect(
+      notificationDeepLink("new-lesson-available", { courseTitle: "Lost" })
+    ).toBe("/courses");
+  });
 });
 
 describe("formatNotificationRow", () => {
@@ -323,6 +340,35 @@ describe("formatNotificationRow", () => {
       contextLine: "Introduction to TypeScript",
       iconType: "course",
       deepLink: "/instructor/1",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a new lesson into actor, action, course and the lesson link", () => {
+    const input: NotificationRowInput = {
+      id: "item-12",
+      workflowKey: "new-lesson-available",
+      actorName: "Sarah Chen",
+      actorAvatarUrl: "https://cdn.example.com/sarah.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseTitle: "Introduction to TypeScript",
+        courseSlug: "introduction-to-typescript",
+        lessonId: 5,
+        lessonTitle: "Union Narrowing",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-12",
+      state: "unread",
+      actorName: "Sarah Chen",
+      actorAvatarUrl: "https://cdn.example.com/sarah.png",
+      actionText: "published a new lesson",
+      contextLine: "Introduction to TypeScript",
+      iconType: "lesson",
+      deepLink: "/courses/introduction-to-typescript/lessons/5",
       insertedAt: "2026-11-27T10:00:00.000Z",
     });
   });
