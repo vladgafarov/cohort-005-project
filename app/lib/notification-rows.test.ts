@@ -59,6 +59,80 @@ describe("formatNotificationRow", () => {
     expect(formatNotificationRow(input).state).toBe("read");
   });
 
+  it("formats an approved Refund Request decision into actor, action, course and link", () => {
+    const input: NotificationRowInput = {
+      id: "item-3",
+      workflowKey: "refund-request-decided",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: "https://cdn.example.com/alex.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        decision: "approved",
+        note: "Refunded in full.",
+        courseTitle: "Introduction to TypeScript",
+        amountPaid: 7900,
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-3",
+      state: "unread",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: "https://cdn.example.com/alex.png",
+      actionText: "approved your refund request",
+      contextLine: "Introduction to TypeScript",
+      iconType: "refund",
+      deepLink: "/settings",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a declined Refund Request decision into actor, action, course and link", () => {
+    const input: NotificationRowInput = {
+      id: "item-4",
+      workflowKey: "refund-request-decided",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: null,
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        decision: "declined",
+        note: "You have completed most of the course.",
+        courseTitle: "Introduction to TypeScript",
+        amountPaid: 7900,
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-4",
+      state: "unread",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: null,
+      actionText: "declined your refund request",
+      contextLine: "Introduction to TypeScript",
+      iconType: "refund",
+      deepLink: "/settings",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("falls back to the decided action text when the decision did not travel with the Notification", () => {
+    const input: NotificationRowInput = {
+      id: "item-5",
+      workflowKey: "refund-request-decided",
+      actorName: null,
+      actorAvatarUrl: null,
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: null,
+    };
+
+    expect(formatNotificationRow(input).actionText).toBe(
+      "decided your refund request"
+    );
+  });
+
   it("survives a Notification that arrives without an actor or context", () => {
     const input: NotificationRowInput = {
       id: "item-2",

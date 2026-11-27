@@ -71,6 +71,7 @@ export type NotificationRow = {
 
 const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "requested a refund",
+  [REFUND_REQUEST_DECIDED_WORKFLOW_KEY]: "decided your refund request",
 };
 
 const FALLBACK_ACTION_TEXT = "sent you a notification";
@@ -79,8 +80,29 @@ export function notificationActionText(workflowKey: string): string {
   return NOTIFICATION_ACTION_TEXTS[workflowKey] ?? FALLBACK_ACTION_TEXT;
 }
 
+// A decided Refund Request's one action text varies with the decision the
+// Platform Admin made, so the row reads the decision out of the data; the
+// static map above holds the text for a Notification that arrived without
+// it.
+const REFUND_DECISION_ACTION_TEXTS: Record<string, string> = {
+  approved: "approved your refund request",
+  declined: "declined your refund request",
+};
+
+function actionTextFrom(input: NotificationRowInput): string {
+  if (input.workflowKey === REFUND_REQUEST_DECIDED_WORKFLOW_KEY) {
+    const decision = input.data?.decision;
+    if (typeof decision === "string") {
+      const text = REFUND_DECISION_ACTION_TEXTS[decision];
+      if (text) return text;
+    }
+  }
+  return notificationActionText(input.workflowKey);
+}
+
 const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "refund",
+  [REFUND_REQUEST_DECIDED_WORKFLOW_KEY]: "refund",
 };
 
 const FALLBACK_ICON_TYPE: NotificationIconType = "bell";
@@ -102,7 +124,7 @@ export function formatNotificationRow(input: NotificationRowInput): Notification
     state: input.readAt === null ? "unread" : "read",
     actorName: input.actorName ?? "Someone",
     actorAvatarUrl: input.actorAvatarUrl,
-    actionText: notificationActionText(input.workflowKey),
+    actionText: actionTextFrom(input),
     contextLine: contextLineFrom(input.data),
     iconType: notificationIconType(input.workflowKey),
     deepLink: notificationDeepLink(input.workflowKey),
