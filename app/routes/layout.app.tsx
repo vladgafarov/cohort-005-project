@@ -3,6 +3,7 @@ import type { Route } from "./+types/layout.app";
 import { Sidebar } from "~/components/sidebar";
 import { DevUI } from "~/components/dev-ui";
 import { Toaster } from "sonner";
+import { NotificationsProvider } from "~/components/notifications/notifications-provider";
 import { getCurrentUserId, getDevCountry } from "~/lib/session";
 import { getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
 import { eq, and, or, sql, desc } from "drizzle-orm";
@@ -213,6 +214,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     countryTierInfo,
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
+    // The notification feed's client-side keys, read here so the browser
+    // never needs env access. The public key is safe on the client while
+    // Knock's enhanced security mode is off (see
+    // docs/notifications-workflows.md).
+    knock: {
+      publicKey: process.env.KNOCK_PUBLIC_API_KEY ?? null,
+      feedChannelId: process.env.KNOCK_FEED_CHANNEL_ID ?? null,
+    },
   };
 }
 
@@ -225,10 +234,11 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     countryTierInfo,
     countries,
     isTeamAdmin: userIsTeamAdmin,
+    knock,
   } = loaderData;
 
-  return (
-    <div className="flex h-screen overflow-hidden">
+  const appShell = (
+    <>
       <Sidebar
         currentUser={currentUser}
         recentCourses={recentCourses}
@@ -245,6 +255,23 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         countries={countries}
       />
       <Toaster position="bottom-right" richColors closeButton />
+    </>
+  );
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {currentUser && knock.publicKey && knock.feedChannelId ? (
+        <NotificationsProvider
+          key={currentUser.id}
+          apiKey={knock.publicKey}
+          feedChannelId={knock.feedChannelId}
+          userId={currentUser.id}
+        >
+          {appShell}
+        </NotificationsProvider>
+      ) : (
+        appShell
+      )}
     </div>
   );
 }

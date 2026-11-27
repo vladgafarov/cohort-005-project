@@ -1,0 +1,142 @@
+// ─── Notification rows ───
+// The pure vocabulary for rendering a Notification as a feed row: the Event
+// workflow keys, each Event's action text, icon chip and deep link, and the
+// row formatter that turns a Notification's data into that row. Client-safe
+// on purpose — the feed island renders it in the browser — and pure like the
+// comment-markdown module, so a workflow rename or a data-shape drift is
+// caught here, by a test, and not discovered as a broken row.
+//
+// The workflow keys mirror the workflows built in the Knock dashboard (see
+// docs/notifications-workflows.md). They are durable identifiers in three
+// places at once — the trigger call, the user's preference set, and the
+// `source.key` stamped on every feed item — so they are constants, named,
+// and pinned by name in the tests.
+
+// "Refund Request raised" — every Platform Admin is notified when a buyer
+// raises one. The tracer bullet of the notification system.
+export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
+
+// ─── Deep links ───
+// One target per Event: clicking a Notification takes the recipient to the
+// thing it is about. The map is keyed by workflow key and covered by name in
+// the tests, so renaming a workflow in the dashboard breaks a test here —
+// not, silently, every row's link. Rows for events not yet in the map fall
+// back to Browse Courses, a page every role can open.
+
+const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
+  [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "/admin/refunds",
+};
+
+const FALLBACK_DEEP_LINK = "/courses";
+
+export function notificationDeepLink(workflowKey: string): string {
+  return NOTIFICATION_DEEP_LINKS[workflowKey] ?? FALLBACK_DEEP_LINK;
+}
+
+// ─── Row formatting ───
+// A Notification rendered as a feed row. The state is the user's whole
+// vocabulary for a Notification — Unread or Read, never a third — and the
+// rest is what the row shows: who acted, what they did, which course or
+// Purchase it concerns, the event-type icon chip, and where clicking goes.
+
+export type NotificationIconType = "refund" | "bell";
+
+export type NotificationRowInput = {
+  id: string;
+  workflowKey: string;
+  actorName: string | null;
+  actorAvatarUrl: string | null;
+  insertedAt: string;
+  readAt: string | null;
+  data: Record<string, unknown> | null;
+};
+
+export type NotificationRow = {
+  id: string;
+  state: "unread" | "read";
+  actorName: string;
+  actorAvatarUrl: string | null;
+  actionText: string;
+  contextLine: string | null;
+  iconType: NotificationIconType;
+  deepLink: string;
+  insertedAt: string;
+};
+
+const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
+  [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "requested a refund",
+};
+
+const FALLBACK_ACTION_TEXT = "sent you a notification";
+
+export function notificationActionText(workflowKey: string): string {
+  return NOTIFICATION_ACTION_TEXTS[workflowKey] ?? FALLBACK_ACTION_TEXT;
+}
+
+const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
+  [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "refund",
+};
+
+const FALLBACK_ICON_TYPE: NotificationIconType = "bell";
+
+export function notificationIconType(workflowKey: string): NotificationIconType {
+  return NOTIFICATION_ICON_TYPES[workflowKey] ?? FALLBACK_ICON_TYPE;
+}
+
+function contextLineFrom(data: Record<string, unknown> | null): string | null {
+  const courseTitle = data?.courseTitle;
+  return typeof courseTitle === "string" ? courseTitle : null;
+}
+
+export function formatNotificationRow(input: NotificationRowInput): NotificationRow {
+  return {
+    id: input.id,
+    // Read is the only state change a Notification ever undergoes; a row
+    // without a read stamp is Unread, and those are the only two states.
+    state: input.readAt === null ? "unread" : "read",
+    actorName: input.actorName ?? "Someone",
+    actorAvatarUrl: input.actorAvatarUrl,
+    actionText: notificationActionText(input.workflowKey),
+    contextLine: contextLineFrom(input.data),
+    iconType: notificationIconType(input.workflowKey),
+    deepLink: notificationDeepLink(input.workflowKey),
+    insertedAt: input.insertedAt,
+  };
+}
+
+// ─── Relative time ───
+
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+export function formatRelativeTime(insertedAt: string, now: Date): string {
+  const when = new Date(insertedAt).getTime();
+
+  if (Number.isNaN(when)) return "";
+
+  const elapsed = now.getTime() - when;
+
+  if (elapsed < MINUTE_MS) return "just now";
+  if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)}m ago`;
+  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h ago`;
+  if (elapsed < WEEK_MS) return `${Math.floor(elapsed / DAY_MS)}d ago`;
+
+  return `${MONTHS[new Date(when).getMonth()]} ${new Date(when).getDate()}`;
+}

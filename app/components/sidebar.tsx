@@ -3,8 +3,10 @@ import { useState, useEffect } from "react";
 import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
+import { NotificationsBadge } from "~/components/notifications/notifications-badge";
 import {
   BookOpen,
+  Bell,
   ChartColumn,
   LayoutDashboard,
   GraduationCap,
@@ -143,6 +145,23 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
+        {currentUser && (
+          <NavLink
+            to="/notifications"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )
+            }
+          >
+            <Bell className="size-4" />
+            <span className="flex-1">Notifications</span>
+            <NotificationsBadge />
+          </NavLink>
+        )}
         {navItems
           .filter((item) => isVisible(item, currentUserRole))
           .map((item) => (

@@ -8,6 +8,8 @@ import { eq } from "drizzle-orm";
 import { parseFormData, parseParams } from "~/lib/validation";
 import { raiseRefundRequest } from "~/lib/refunds.server";
 import { sendEmail } from "~/lib/mailer.server";
+import { triggerWorkflow } from "~/lib/knock.server";
+import { buildRefundRequestRaisedNotification } from "~/lib/notifications.server";
 
 const refundParamsSchema = z.object({
   slug: z.string().min(1),
@@ -73,6 +75,20 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   await sendEmail(result.email);
+
+  // The raised Refund Request announces itself to every Platform Admin —
+  // the same moment reaching the buyer's own inbox through the untouched
+  // refund email, and the admins' feeds through the Notification system:
+  // two systems, never unified. A failed trigger is logged and swallowed
+  // inside the wrapper, so the refund the buyer just raised always succeeds.
+  const notification = buildRefundRequestRaisedNotification(
+    db,
+    purchase.id,
+    currentUserId,
+    parsed.data.reason,
+    new Date()
+  );
+  if (notification) await triggerWorkflow(notification);
 
   return redirect(result.kind === "team_licence" ? "/team" : "/settings");
 }
