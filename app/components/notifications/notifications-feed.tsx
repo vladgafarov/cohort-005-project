@@ -8,6 +8,7 @@ import {
   Receipt,
   Reply,
   Star,
+  Ticket,
 } from "lucide-react";
 import { useNotificationStore } from "@knocklabs/react";
 import type { useNotifications } from "@knocklabs/react";
@@ -65,6 +66,9 @@ function eventIcon(iconType: NotificationIconType): ReactNode {
       return <Reply className="size-3" />;
     case "star":
       return <Star className="size-3" />;
+    // The same ticket the redeem page shows for a Seat's coupon code.
+    case "seat":
+      return <Ticket className="size-3" />;
     case "bell":
       return <Bell className="size-3" />;
   }

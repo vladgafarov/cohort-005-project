@@ -94,6 +94,7 @@ export type NotificationIconType =
   | "comment"
   | "reply"
   | "star"
+  | "seat"
   | "bell";
 
 export type NotificationRowInput = {
@@ -124,6 +125,7 @@ const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
   [LESSON_COMMENT_POSTED_WORKFLOW_KEY]: "commented on your lesson",
   [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: "replied to your comment",
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "rated your course",
+  [SEAT_CLAIMED_WORKFLOW_KEY]: "claimed a Seat",
 };
 
 const FALLBACK_ACTION_TEXT = "sent you a notification";
@@ -158,6 +160,7 @@ const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
   [LESSON_COMMENT_POSTED_WORKFLOW_KEY]: "comment",
   [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: "reply",
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "star",
+  [SEAT_CLAIMED_WORKFLOW_KEY]: "seat",
 };
 
 const FALLBACK_ICON_TYPE: NotificationIconType = "bell";

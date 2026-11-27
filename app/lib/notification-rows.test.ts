@@ -230,6 +230,33 @@ describe("formatNotificationRow", () => {
     });
   });
 
+  it("formats a claimed Seat into actor, action, course and the team page link", () => {
+    const input: NotificationRowInput = {
+      id: "item-8",
+      workflowKey: "seat-claimed",
+      actorName: "Casey Claimer",
+      actorAvatarUrl: "https://cdn.example.com/casey.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseTitle: "Building REST APIs with Node.js",
+        claimerName: "Casey Claimer",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-8",
+      state: "unread",
+      actorName: "Casey Claimer",
+      actorAvatarUrl: "https://cdn.example.com/casey.png",
+      actionText: "claimed a Seat",
+      contextLine: "Building REST APIs with Node.js",
+      iconType: "seat",
+      deepLink: "/team",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
   it("falls back to the decided action text when the decision did not travel with the Notification", () => {
     const input: NotificationRowInput = {
       id: "item-5",
