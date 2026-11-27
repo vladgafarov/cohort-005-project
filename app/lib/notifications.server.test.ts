@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import * as schema from "~/db/schema";
 import { UserRole } from "~/db/schema";
-import { buildRefundRequestRaisedNotification } from "./notifications.server";
+import {
+  buildNewLessonAvailableNotification,
+  buildRefundRequestRaisedNotification,
+} from "./notifications.server";
 
 type TestDb = ReturnType<typeof createTestDb>;
 
