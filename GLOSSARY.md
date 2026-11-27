@@ -1,6 +1,6 @@
 # Cadence
 
-Cadence sells video courses to students. This glossary covers the language around buying, taking and refunding courses.
+Cadence sells video courses to students. This glossary covers the language around buying, taking and refunding courses, and the Notifications around them.
 
 ## Language
 
@@ -92,3 +92,29 @@ A Refund where the money couldn't be sent. The Refund Request stays approved, be
 **Watch Limit**:
 The amount of Watched time on a course past which a Student can no longer get a Refund, because they've had the course.
 _Avoid_: Watch cap, Viewing threshold
+
+### Notifications
+
+**Event**:
+Something that happened in Cadence that the notification system may report: a Purchase, a claimed Seat, a comment, a decided Refund Request. Every Notification is about one Event.
+_Avoid_: Trigger, Activity
+
+**Notification**:
+An item in a user's feed reporting an Event they didn't cause. The actor who caused an Event never gets a Notification for it; the screen they are already on is their confirmation.
+_Avoid_: Alert, Ping, Message
+
+**Unread**:
+A Notification its recipient hasn't read yet.
+_Avoid_: Unseen, New, Pending
+
+**Read**:
+A Notification its recipient has clicked through to, or explicitly marked. Reading is the only state change a Notification ever undergoes; it stays in the feed afterwards.
+_Avoid_: Seen, Dismissed, Done
+
+**Channel**:
+A way a Notification reaches its recipient. Cadence's notification system has one Channel: the in-app feed. The refund emails are not a Channel of it.
+_Avoid_: Delivery method, Medium
+
+**Preference**:
+A user's choice of which Events still produce Notifications for them. A user who receives only one Event has nothing to choose between, and so has no Preferences.
+_Avoid_: Settings, Opt-in, Mute, Subscriptions
