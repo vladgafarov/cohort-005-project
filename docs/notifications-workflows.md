@@ -115,6 +115,29 @@ dispatch line:
 The dashboard's message logs (30-day retention on the Free plan) are the
 sole delivery record; the trigger response only returns a `workflow_run_id`.
 
+## The history loop (issue #16)
+
+The feed's history behaviors — grouping, the filter, and clearing the
+backlog — are verified the same way, by hand in the DevUI:
+
+1. With several rows in the feed, open **Notifications**: rows are
+   grouped **Today / Earlier** — the day's rows on top, the rest in
+   feed order below.
+2. Filter to **Unread**: only rows not yet read remain. Switch back to
+   **All** and everything is still there — Read rows stay in the feed,
+   a history, not a queue.
+3. On an Unread row, press the **check mark** beside it: the row turns
+   Read without navigating, the sidebar badge drops by one, and the row
+   is still in the feed under All.
+4. Press **Mark all read**: the backlog clears in one action and the
+   badge falls to zero. Under All, every row remains, marked Read.
+
+The grouping and the filter behind this loop are pure functions in
+`app/lib/notification-history.ts`, pinned by their colocated tests; the
+badge counts the same `unread_count` the provider tracks, so it clears
+only as rows are actually read — opening the feed marks rows seen and
+does not touch the badge.
+
 ## Pinned requirements
 
 - **Content security policy (none exists today — do not add one).** When

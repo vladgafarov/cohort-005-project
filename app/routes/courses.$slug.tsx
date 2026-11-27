@@ -52,6 +52,8 @@ import {
 import { parseFormData } from "~/lib/validation";
 import { MAX_RATING, MIN_RATING } from "~/lib/ratings";
 import { StarRating, StarRatingInput } from "~/components/star-rating";
+import { triggerWorkflow } from "~/lib/knock.server";
+import { buildCourseRatingLeftNotification } from "~/lib/notifications.server";
 
 function getCourseBySlug(slug: string) {
   return db.select().from(courses).where(eq(courses.slug, slug)).get();
@@ -476,6 +478,19 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   rateCourse(currentUserId, course.id, parsed.data.rating);
+
+  // The rating announces itself to the course's Instructor, deep-linking to
+  // their analytics so it lands in context. A failed trigger is logged and
+  // swallowed inside the wrapper, so the rating the Student just left always
+  // succeeds.
+  const notification = buildCourseRatingLeftNotification(
+    db,
+    course.id,
+    currentUserId,
+    parsed.data.rating,
+    new Date()
+  );
+  if (notification) await triggerWorkflow(notification);
 
   return { ok: true as const, error: null };
 }
