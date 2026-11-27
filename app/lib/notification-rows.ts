@@ -16,21 +16,44 @@
 // raises one. The tracer bullet of the notification system.
 export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
+// "Course published / archived" — the course's Instructor is notified when
+// a Platform Admin publishes or archives their course in the admin course
+// screens.
+export const COURSE_STATUS_CHANGED_WORKFLOW_KEY = "course-status-changed";
+
 // ─── Deep links ───
 // One target per Event: clicking a Notification takes the recipient to the
 // thing it is about. The map is keyed by workflow key and covered by name in
 // the tests, so renaming a workflow in the dashboard breaks a test here —
 // not, silently, every row's link. Rows for events not yet in the map fall
-// back to Browse Courses, a page every role can open.
+// back to Browse Courses, a page every role can open. A target is a fixed
+// path, or — for an Event about one specific thing, like a course — a
+// function of the Notification's flat data.
 
-const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
+type DeepLinkTarget =
+  | string
+  | ((data: Record<string, unknown> | null) => string);
+
+const NOTIFICATION_DEEP_LINKS: Record<string, DeepLinkTarget> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "/admin/refunds",
+  // The Instructor's course home, where the course's status shows.
+  [COURSE_STATUS_CHANGED_WORKFLOW_KEY]: (data) => {
+    const courseId = data?.courseId;
+    return typeof courseId === "number"
+      ? `/instructor/${courseId}`
+      : FALLBACK_DEEP_LINK;
+  },
 };
 
 const FALLBACK_DEEP_LINK = "/courses";
 
-export function notificationDeepLink(workflowKey: string): string {
-  return NOTIFICATION_DEEP_LINKS[workflowKey] ?? FALLBACK_DEEP_LINK;
+export function notificationDeepLink(
+  workflowKey: string,
+  data: Record<string, unknown> | null = null
+): string {
+  const target = NOTIFICATION_DEEP_LINKS[workflowKey];
+  if (typeof target === "function") return target(data);
+  return target ?? FALLBACK_DEEP_LINK;
 }
 
 // ─── Row formatting ───
@@ -99,7 +122,7 @@ export function formatNotificationRow(input: NotificationRowInput): Notification
     actionText: notificationActionText(input.workflowKey),
     contextLine: contextLineFrom(input.data),
     iconType: notificationIconType(input.workflowKey),
-    deepLink: notificationDeepLink(input.workflowKey),
+    deepLink: notificationDeepLink(input.workflowKey, input.data),
     insertedAt: input.insertedAt,
   };
 }

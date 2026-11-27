@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import * as schema from "~/db/schema";
-import { UserRole } from "~/db/schema";
-import { buildRefundRequestRaisedNotification } from "./notifications.server";
+import { CourseStatus, UserRole } from "~/db/schema";
+import {
+  buildCourseStatusChangedNotification,
+  buildRefundRequestRaisedNotification,
+} from "./notifications.server";
 
 type TestDb = ReturnType<typeof createTestDb>;
 
@@ -172,5 +175,36 @@ describe("buildRefundRequestRaisedNotification", () => {
     );
 
     expect(notification).toBeNull();
+  });
+});
+
+describe("buildCourseStatusChangedNotification", () => {
+  it("notifies the course's Instructor, never the acting Platform Admin", () => {
+    const alex = addAdmin("Alex Admin");
+
+    const notification = buildCourseStatusChangedNotification(
+      db,
+      base.course.id,
+      CourseStatus.Draft,
+      CourseStatus.Published,
+      alex.id,
+      NOW
+    );
+
+    expect(notification?.workflowKey).toBe("course-status-changed");
+    expect(notification?.recipients).toEqual([
+      {
+        id: base.instructor.id,
+        name: "Test Instructor",
+        email: base.instructor.email,
+        avatarUrl: null,
+      },
+    ]);
+    expect(notification?.actor).toEqual({
+      id: alex.id,
+      name: "Alex Admin",
+      email: alex.email,
+      avatarUrl: null,
+    });
   });
 });

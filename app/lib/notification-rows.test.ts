@@ -14,6 +14,16 @@ describe("notification deep links", () => {
   it("falls back to Browse Courses for a workflow the map does not know", () => {
     expect(notificationDeepLink("some-future-event")).toBe("/courses");
   });
+
+  it("sends a publish or archive to the Instructor's course home", () => {
+    expect(
+      notificationDeepLink("course-status-changed", { courseId: 7 })
+    ).toBe("/instructor/7");
+  });
+
+  it("keeps a course-status Notification that lost its course on Browse Courses", () => {
+    expect(notificationDeepLink("course-status-changed", null)).toBe("/courses");
+  });
 });
 
 describe("formatNotificationRow", () => {
