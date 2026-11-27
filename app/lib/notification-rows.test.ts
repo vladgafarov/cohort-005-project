@@ -11,6 +11,12 @@ describe("notification deep links", () => {
     expect(notificationDeepLink("refund-request-raised")).toBe("/admin/refunds");
   });
 
+  it("sends a course rating to the Instructor's analytics", () => {
+    expect(notificationDeepLink("course-rating-left")).toBe(
+      "/instructor/analytics"
+    );
+  });
+
   it("falls back to Browse Courses for a workflow the map does not know", () => {
     expect(notificationDeepLink("some-future-event")).toBe("/courses");
   });
@@ -37,6 +43,30 @@ describe("formatNotificationRow", () => {
       contextLine: "Introduction to TypeScript",
       iconType: "refund",
       deepLink: "/admin/refunds",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a course rating into actor, action, course and link", () => {
+    const input: NotificationRowInput = {
+      id: "item-3",
+      workflowKey: "course-rating-left",
+      actorName: "Rita Rater",
+      actorAvatarUrl: "https://cdn.example.com/rita.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: { courseTitle: "Introduction to TypeScript", rating: 5 },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-3",
+      state: "unread",
+      actorName: "Rita Rater",
+      actorAvatarUrl: "https://cdn.example.com/rita.png",
+      actionText: "rated your course",
+      contextLine: "Introduction to TypeScript",
+      iconType: "star",
+      deepLink: "/instructor/analytics",
       insertedAt: "2026-11-27T10:00:00.000Z",
     });
   });

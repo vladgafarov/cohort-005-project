@@ -2,7 +2,10 @@ import { asc, eq } from "drizzle-orm";
 import { courses, purchases, users, UserRole } from "~/db/schema";
 import type { Db } from "~/lib/refunds.server";
 import type { UserIdentity, WorkflowTrigger } from "~/lib/knock.server";
-import { REFUND_REQUEST_RAISED_WORKFLOW_KEY } from "~/lib/notification-rows";
+import {
+  COURSE_RATING_LEFT_WORKFLOW_KEY,
+  REFUND_REQUEST_RAISED_WORKFLOW_KEY,
+} from "~/lib/notification-rows";
 
 // ─── Notification payload builders ───
 // One pure, db-first builder per catalog Event: it reads the database to
@@ -84,6 +87,50 @@ export function buildRefundRequestRaisedNotification(
     data: {
       courseTitle: course.title,
       reason,
+    },
+  };
+}
+
+/**
+ * "Course rating left": a Student has just left a rating on the course
+ * page, and the course's Instructor hears about it. The rater is the
+ * actor — never a recipient — and the Notification carries the rating and
+ * the course, so the Instructor sees how the course is being received.
+ */
+export function buildCourseRatingLeftNotification(
+  db: Db,
+  courseId: number,
+  raterId: number,
+  rating: number,
+  now: Date
+): WorkflowTrigger | null {
+  const course = db
+    .select()
+    .from(courses)
+    .where(eq(courses.id, courseId))
+    .get();
+  const rater = db.select().from(users).where(eq(users.id, raterId)).get();
+  const instructor = db
+    .select()
+    .from(users)
+    .where(eq(users.id, course?.instructorId ?? -1))
+    .get();
+
+  if (!course || !rater || !instructor) return null;
+
+  // The actor never receives the Notification for their own action — the
+  // screen they are already on is their confirmation.
+  if (instructor.id === rater.id) return null;
+
+  return {
+    workflowKey: COURSE_RATING_LEFT_WORKFLOW_KEY,
+    recipients: [identityOf(instructor)],
+    actor: identityOf(rater),
+    // Flat scalars only: the feed's compact mode strips nested arrays and
+    // objects out of item data.
+    data: {
+      courseTitle: course.title,
+      rating,
     },
   };
 }

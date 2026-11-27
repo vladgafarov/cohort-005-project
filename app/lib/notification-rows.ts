@@ -16,6 +16,10 @@
 // raises one. The tracer bullet of the notification system.
 export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
+// "Course rating left" — the course's Instructor is notified when a
+// Student leaves a rating on the course page.
+export const COURSE_RATING_LEFT_WORKFLOW_KEY = "course-rating-left";
+
 // ─── Deep links ───
 // One target per Event: clicking a Notification takes the recipient to the
 // thing it is about. The map is keyed by workflow key and covered by name in
@@ -25,6 +29,9 @@ export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
 const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "/admin/refunds",
+  // The Instructor sees the rating land in context: their analytics show
+  // how the course is being received.
+  [COURSE_RATING_LEFT_WORKFLOW_KEY]: "/instructor/analytics",
 };
 
 const FALLBACK_DEEP_LINK = "/courses";
@@ -39,7 +46,7 @@ export function notificationDeepLink(workflowKey: string): string {
 // rest is what the row shows: who acted, what they did, which course or
 // Purchase it concerns, the event-type icon chip, and where clicking goes.
 
-export type NotificationIconType = "refund" | "bell";
+export type NotificationIconType = "refund" | "star" | "bell";
 
 export type NotificationRowInput = {
   id: string;
@@ -65,6 +72,7 @@ export type NotificationRow = {
 
 const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "requested a refund",
+  [COURSE_RATING_LEFT_WORKFLOW_KEY]: "rated your course",
 };
 
 const FALLBACK_ACTION_TEXT = "sent you a notification";
@@ -75,6 +83,7 @@ export function notificationActionText(workflowKey: string): string {
 
 const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "refund",
+  [COURSE_RATING_LEFT_WORKFLOW_KEY]: "star",
 };
 
 const FALLBACK_ICON_TYPE: NotificationIconType = "bell";

@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import * as schema from "~/db/schema";
 import { UserRole } from "~/db/schema";
-import { buildRefundRequestRaisedNotification } from "./notifications.server";
+import {
+  buildCourseRatingLeftNotification,
+  buildRefundRequestRaisedNotification,
+} from "./notifications.server";
 
 type TestDb = ReturnType<typeof createTestDb>;
 
@@ -168,6 +171,106 @@ describe("buildRefundRequestRaisedNotification", () => {
       999999,
       base.user.id,
       "It was not what I expected.",
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+});
+
+describe("buildCourseRatingLeftNotification", () => {
+  it("notifies the course's Instructor when a Student rates the course", () => {
+    const notification = buildCourseRatingLeftNotification(
+      db,
+      base.course.id,
+      base.user.id,
+      4,
+      NOW
+    );
+
+    expect(notification).not.toBeNull();
+    expect(notification?.workflowKey).toBe("course-rating-left");
+    expect(notification?.recipients).toEqual([
+      {
+        id: base.instructor.id,
+        name: "Test Instructor",
+        email: "instructor@example.com",
+        avatarUrl: null,
+      },
+    ]);
+  });
+
+  it("never notifies the rater when the rater is the course's own Instructor", () => {
+    const notification = buildCourseRatingLeftNotification(
+      db,
+      base.course.id,
+      base.instructor.id,
+      5,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("carries the rater as the actor with the rating and the course as the context", () => {
+    const rater = db
+      .insert(schema.users)
+      .values({
+        name: "Rita Rater",
+        email: "rita@example.com",
+        role: UserRole.Student,
+        avatarUrl: "https://cdn.example.com/rita.png",
+      })
+      .returning()
+      .get();
+
+    const notification = buildCourseRatingLeftNotification(
+      db,
+      base.course.id,
+      rater.id,
+      5,
+      NOW
+    );
+
+    expect(notification?.actor).toEqual({
+      id: rater.id,
+      name: "Rita Rater",
+      email: "rita@example.com",
+      avatarUrl: "https://cdn.example.com/rita.png",
+    });
+    expect(notification?.data).toEqual({
+      courseTitle: base.course.title,
+      rating: 5,
+    });
+  });
+
+  it("keeps the trigger data flat — scalar values only, safe for the compact feed", () => {
+    const notification = buildCourseRatingLeftNotification(
+      db,
+      base.course.id,
+      base.user.id,
+      3,
+      NOW
+    );
+
+    const values = Object.values(notification?.data ?? {});
+    expect(values.length).toBeGreaterThan(0);
+    expect(
+      values.every(
+        (value) =>
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+      )
+    ).toBe(true);
+  });
+
+  it("builds nothing for a course that does not exist", () => {
+    const notification = buildCourseRatingLeftNotification(
+      db,
+      999999,
+      base.user.id,
+      4,
       NOW
     );
 
