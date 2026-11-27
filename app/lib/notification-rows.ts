@@ -16,6 +16,11 @@
 // raises one. The tracer bullet of the notification system.
 export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
+// "Refund Request decided" — the buyer is notified when a Platform Admin
+// approves or declines their Open Refund Request in the refund queue. One
+// Event, one workflow; the trigger data carries which decision it was.
+export const REFUND_REQUEST_DECIDED_WORKFLOW_KEY = "refund-request-decided";
+
 // ─── Deep links ───
 // One target per Event: clicking a Notification takes the recipient to the
 // thing it is about. The map is keyed by workflow key and covered by name in
@@ -25,6 +30,7 @@ export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
 const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "/admin/refunds",
+  [REFUND_REQUEST_DECIDED_WORKFLOW_KEY]: "/settings",
 };
 
 const FALLBACK_DEEP_LINK = "/courses";

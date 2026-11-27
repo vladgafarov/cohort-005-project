@@ -11,6 +11,10 @@ describe("notification deep links", () => {
     expect(notificationDeepLink("refund-request-raised")).toBe("/admin/refunds");
   });
 
+  it("sends a decided Refund Request to the buyer's settings refund history", () => {
+    expect(notificationDeepLink("refund-request-decided")).toBe("/settings");
+  });
+
   it("falls back to Browse Courses for a workflow the map does not know", () => {
     expect(notificationDeepLink("some-future-event")).toBe("/courses");
   });
