@@ -16,6 +16,21 @@
 // raises one. The tracer bullet of the notification system.
 export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
+// "Refund Request decided" — the buyer is notified when a Platform Admin
+// approves or declines their Open Refund Request in the refund queue. One
+// Event, one workflow; the trigger data carries which decision it was.
+export const REFUND_REQUEST_DECIDED_WORKFLOW_KEY = "refund-request-decided";
+
+// "Comment posted on a lesson" — the course's Instructor is notified when a
+// Student comments on one of their lessons.
+export const LESSON_COMMENT_POSTED_WORKFLOW_KEY = "lesson-comment-posted";
+
+// "Comment reply posted" — the parent comment's author is notified when
+// someone replies to a comment they wrote. An Instructor's Q&A answer is
+// one of these: answering in the queue inserts a reply to the question,
+// so the Student who asked gets the row.
+export const COMMENT_REPLY_POSTED_WORKFLOW_KEY = "comment-reply-posted";
+
 // "Course rating left" — the course's Instructor is notified when a
 // Student leaves a rating on the course page.
 export const COURSE_RATING_LEFT_WORKFLOW_KEY = "course-rating-left";
@@ -24,11 +39,29 @@ export const COURSE_RATING_LEFT_WORKFLOW_KEY = "course-rating-left";
 // One target per Event: clicking a Notification takes the recipient to the
 // thing it is about. The map is keyed by workflow key and covered by name in
 // the tests, so renaming a workflow in the dashboard breaks a test here —
-// not, silently, every row's link. Rows for events not yet in the map fall
-// back to Browse Courses, a page every role can open.
+// not, silently, every row's link. Most targets are constants; an Event
+// that is about one specific thing — a lesson thread — reads its target
+// out of the Notification's data instead. Rows for events not yet in the
+// map fall back to Browse Courses, a page every role can open.
 
-const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
+type DeepLinkTarget = string | ((data: Record<string, unknown> | null) => string);
+
+// The lesson thread a comment conversation lives in — the one place a
+// reply's reader needs to land to keep the conversation going.
+function lessonThreadLink(data: Record<string, unknown> | null): string {
+  const courseSlug = data?.courseSlug;
+  const lessonId = data?.lessonId;
+  if (typeof courseSlug !== "string" || typeof lessonId !== "number") {
+    return FALLBACK_DEEP_LINK;
+  }
+  return `/courses/${courseSlug}/lessons/${lessonId}`;
+}
+
+const NOTIFICATION_DEEP_LINKS: Record<string, DeepLinkTarget> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "/admin/refunds",
+  [REFUND_REQUEST_DECIDED_WORKFLOW_KEY]: "/settings",
+  [LESSON_COMMENT_POSTED_WORKFLOW_KEY]: "/instructor/questions",
+  [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: lessonThreadLink,
   // The Instructor sees the rating land in context: their analytics show
   // how the course is being received.
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "/instructor/analytics",
@@ -36,8 +69,12 @@ const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
 
 const FALLBACK_DEEP_LINK = "/courses";
 
-export function notificationDeepLink(workflowKey: string): string {
-  return NOTIFICATION_DEEP_LINKS[workflowKey] ?? FALLBACK_DEEP_LINK;
+export function notificationDeepLink(
+  workflowKey: string,
+  data: Record<string, unknown> | null = null
+): string {
+  const target = NOTIFICATION_DEEP_LINKS[workflowKey] ?? FALLBACK_DEEP_LINK;
+  return typeof target === "string" ? target : target(data);
 }
 
 // ─── Row formatting ───
@@ -46,7 +83,12 @@ export function notificationDeepLink(workflowKey: string): string {
 // rest is what the row shows: who acted, what they did, which course or
 // Purchase it concerns, the event-type icon chip, and where clicking goes.
 
-export type NotificationIconType = "refund" | "star" | "bell";
+export type NotificationIconType =
+  | "refund"
+  | "comment"
+  | "reply"
+  | "star"
+  | "bell";
 
 export type NotificationRowInput = {
   id: string;
@@ -72,6 +114,9 @@ export type NotificationRow = {
 
 const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "requested a refund",
+  [REFUND_REQUEST_DECIDED_WORKFLOW_KEY]: "decided your refund request",
+  [LESSON_COMMENT_POSTED_WORKFLOW_KEY]: "commented on your lesson",
+  [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: "replied to your comment",
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "rated your course",
 };
 
@@ -81,8 +126,31 @@ export function notificationActionText(workflowKey: string): string {
   return NOTIFICATION_ACTION_TEXTS[workflowKey] ?? FALLBACK_ACTION_TEXT;
 }
 
+// A decided Refund Request's one action text varies with the decision the
+// Platform Admin made, so the row reads the decision out of the data; the
+// static map above holds the text for a Notification that arrived without
+// it.
+const REFUND_DECISION_ACTION_TEXTS: Record<string, string> = {
+  approved: "approved your refund request",
+  declined: "declined your refund request",
+};
+
+function actionTextFrom(input: NotificationRowInput): string {
+  if (input.workflowKey === REFUND_REQUEST_DECIDED_WORKFLOW_KEY) {
+    const decision = input.data?.decision;
+    if (typeof decision === "string") {
+      const text = REFUND_DECISION_ACTION_TEXTS[decision];
+      if (text) return text;
+    }
+  }
+  return notificationActionText(input.workflowKey);
+}
+
 const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "refund",
+  [REFUND_REQUEST_DECIDED_WORKFLOW_KEY]: "refund",
+  [LESSON_COMMENT_POSTED_WORKFLOW_KEY]: "comment",
+  [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: "reply",
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "star",
 };
 
@@ -105,10 +173,10 @@ export function formatNotificationRow(input: NotificationRowInput): Notification
     state: input.readAt === null ? "unread" : "read",
     actorName: input.actorName ?? "Someone",
     actorAvatarUrl: input.actorAvatarUrl,
-    actionText: notificationActionText(input.workflowKey),
+    actionText: actionTextFrom(input),
     contextLine: contextLineFrom(input.data),
     iconType: notificationIconType(input.workflowKey),
-    deepLink: notificationDeepLink(input.workflowKey),
+    deepLink: notificationDeepLink(input.workflowKey, input.data),
     insertedAt: input.insertedAt,
   };
 }

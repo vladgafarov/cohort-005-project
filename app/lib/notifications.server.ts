@@ -1,9 +1,22 @@
 import { asc, eq } from "drizzle-orm";
-import { courses, purchases, users, UserRole } from "~/db/schema";
+import {
+  comments,
+  courses,
+  lessons,
+  modules,
+  purchases,
+  refunds,
+  users,
+  RefundStatus,
+  UserRole,
+} from "~/db/schema";
 import type { Db } from "~/lib/refunds.server";
 import type { UserIdentity, WorkflowTrigger } from "~/lib/knock.server";
 import {
+  COMMENT_REPLY_POSTED_WORKFLOW_KEY,
   COURSE_RATING_LEFT_WORKFLOW_KEY,
+  LESSON_COMMENT_POSTED_WORKFLOW_KEY,
+  REFUND_REQUEST_DECIDED_WORKFLOW_KEY,
   REFUND_REQUEST_RAISED_WORKFLOW_KEY,
 } from "~/lib/notification-rows";
 
@@ -30,6 +43,24 @@ function identityOf(user: typeof users.$inferSelect): UserIdentity {
     email: user.email,
     avatarUrl: user.avatarUrl,
   };
+}
+
+// The course a lesson belongs to, with the lesson's own title: the context
+// every comment Event carries — which course, which lesson, and (through
+// instructorId) who to notify about a fresh comment.
+function courseOfLesson(db: Db, lessonId: number) {
+  return db
+    .select({
+      instructorId: courses.instructorId,
+      courseTitle: courses.title,
+      courseSlug: courses.slug,
+      lessonTitle: lessons.title,
+    })
+    .from(lessons)
+    .innerJoin(modules, eq(lessons.moduleId, modules.id))
+    .innerJoin(courses, eq(modules.courseId, courses.id))
+    .where(eq(lessons.id, lessonId))
+    .get();
 }
 
 /**
@@ -87,6 +118,200 @@ export function buildRefundRequestRaisedNotification(
     data: {
       courseTitle: course.title,
       reason,
+    },
+  };
+}
+
+/**
+ * "Refund Request decided": a Platform Admin has just approved or declined
+ * an Open Refund Request, and the buyer hears about it alongside the email
+ * they already receive — the deliberate dual touch, the email staying the
+ * only email. The deciding Platform Admin is the actor, never a recipient,
+ * and the Notification carries the decision, the admin's note, the course,
+ * and the amount, so the buyer can read the outcome in their feed and
+ * follow the link to their refund history, where the note lives.
+ */
+export function buildRefundRequestDecidedNotification(
+  db: Db,
+  refundRequestId: number,
+  platformAdminId: number,
+  decision: RefundStatus.Approved | RefundStatus.Declined,
+  note: string | null,
+  now: Date
+): WorkflowTrigger | null {
+  const refundRequest = db
+    .select()
+    .from(refunds)
+    .where(eq(refunds.id, refundRequestId))
+    .get();
+
+  if (!refundRequest) return null;
+
+  const purchase = db
+    .select()
+    .from(purchases)
+    .where(eq(purchases.id, refundRequest.purchaseId))
+    .get();
+
+  if (!purchase) return null;
+
+  const buyer = db
+    .select()
+    .from(users)
+    .where(eq(users.id, purchase.userId))
+    .get();
+  const course = db
+    .select()
+    .from(courses)
+    .where(eq(courses.id, purchase.courseId))
+    .get();
+  const admin = db
+    .select()
+    .from(users)
+    .where(eq(users.id, platformAdminId))
+    .get();
+
+  if (!buyer || !course || !admin) return null;
+
+  // The standing rule: the actor never receives the Notification for
+  // their own action. A Platform Admin deciding their own Refund Request
+  // is both buyer and actor, so there is no one to notify.
+  if (buyer.id === admin.id) return null;
+
+  return {
+    workflowKey: REFUND_REQUEST_DECIDED_WORKFLOW_KEY,
+    recipients: [identityOf(buyer)],
+    actor: identityOf(admin),
+    // Flat scalars only: the feed's compact mode strips nested arrays and
+    // objects out of item data. The note is null when the admin did not
+    // write one — an approval needs no note.
+    data: {
+      decision,
+      note,
+      courseTitle: course.title,
+      amountPaid: purchase.amountPaid,
+    },
+  };
+}
+
+/**
+ * "Comment posted on a lesson": a Student has just commented on a lesson,
+ * and the course's Instructor hears about it while it's fresh. The
+ * commenter is the actor — never a recipient, even when the commenter is
+ * the Instructor themself — and the Notification carries the course and
+ * the lesson, so the row can deep-link straight into the Instructor's
+ * Q&A queue.
+ */
+export function buildLessonCommentPostedNotification(
+  db: Db,
+  commentId: number,
+  now: Date
+): WorkflowTrigger | null {
+  const comment = db
+    .select()
+    .from(comments)
+    .where(eq(comments.id, commentId))
+    .get();
+
+  // A reply is the comment-reply Event's insert shape, not this one's: the
+  // comment Event fires on top-level comments only.
+  if (!comment || comment.parentId !== null) return null;
+
+  const context = courseOfLesson(db, comment.lessonId);
+  const actor = db
+    .select()
+    .from(users)
+    .where(eq(users.id, comment.userId))
+    .get();
+  const instructor = context
+    ? db
+        .select()
+        .from(users)
+        .where(eq(users.id, context.instructorId))
+        .get()
+    : undefined;
+
+  if (!context || !actor || !instructor) return null;
+
+  // The standing rule: the actor never receives the Notification for their
+  // own action. The Instructor commenting on their own lesson is actor and
+  // recipient in one, so there is no one to notify.
+  if (actor.id === instructor.id) return null;
+
+  return {
+    workflowKey: LESSON_COMMENT_POSTED_WORKFLOW_KEY,
+    recipients: [identityOf(instructor)],
+    actor: identityOf(actor),
+    // Flat scalars only: the feed's compact mode strips nested arrays and
+    // objects out of item data.
+    data: {
+      courseTitle: context.courseTitle,
+      lessonTitle: context.lessonTitle,
+    },
+  };
+}
+
+/**
+ * "Comment reply posted": someone has just replied to a comment, and the
+ * comment's author hears about it. An Instructor's Q&A answer is one of
+ * these — answering in the queue inserts a reply — so the Student who
+ * asked gets the row and can keep the conversation going without
+ * patrolling the lesson. The replier is the actor, never a recipient, and
+ * the Notification carries the course and the lesson thread it happened
+ * in, so the row deep-links straight into that thread.
+ */
+export function buildCommentReplyPostedNotification(
+  db: Db,
+  replyId: number,
+  now: Date
+): WorkflowTrigger | null {
+  const reply = db
+    .select()
+    .from(comments)
+    .where(eq(comments.id, replyId))
+    .get();
+
+  // A top-level comment is the lesson-comment Event's insert shape, not
+  // this one's: the reply Event fires on replies only.
+  if (!reply || reply.parentId === null) return null;
+
+  const parent = db
+    .select()
+    .from(comments)
+    .where(eq(comments.id, reply.parentId))
+    .get();
+  const context = courseOfLesson(db, reply.lessonId);
+  const actor = db
+    .select()
+    .from(users)
+    .where(eq(users.id, reply.userId))
+    .get();
+  const parentAuthor = parent
+    ? db
+        .select()
+        .from(users)
+        .where(eq(users.id, parent.userId))
+        .get()
+    : undefined;
+
+  if (!parent || !context || !actor || !parentAuthor) return null;
+
+  // The standing rule: the actor never receives the Notification for their
+  // own action. Replying to your own comment is its own confirmation.
+  if (actor.id === parentAuthor.id) return null;
+
+  return {
+    workflowKey: COMMENT_REPLY_POSTED_WORKFLOW_KEY,
+    recipients: [identityOf(parentAuthor)],
+    actor: identityOf(actor),
+    // Flat scalars only: the feed's compact mode strips nested arrays and
+    // objects out of item data. courseSlug and lessonId are the pair the
+    // row's deep link reads to land in the lesson thread.
+    data: {
+      courseTitle: context.courseTitle,
+      courseSlug: context.courseSlug,
+      lessonId: reply.lessonId,
+      lessonTitle: context.lessonTitle,
     },
   };
 }

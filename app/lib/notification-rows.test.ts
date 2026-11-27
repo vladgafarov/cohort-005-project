@@ -11,6 +11,33 @@ describe("notification deep links", () => {
     expect(notificationDeepLink("refund-request-raised")).toBe("/admin/refunds");
   });
 
+  it("sends a decided Refund Request to the buyer's settings refund history", () => {
+    expect(notificationDeepLink("refund-request-decided")).toBe("/settings");
+  });
+
+  it("sends a lesson comment to the Instructor's Q&A queue", () => {
+    expect(notificationDeepLink("lesson-comment-posted")).toBe(
+      "/instructor/questions"
+    );
+  });
+
+  it("sends a comment reply to the lesson thread it happened in", () => {
+    expect(
+      notificationDeepLink("comment-reply-posted", {
+        courseTitle: "Introduction to TypeScript",
+        courseSlug: "introduction-to-typescript",
+        lessonId: 5,
+        lessonTitle: "Union Narrowing",
+      })
+    ).toBe("/courses/introduction-to-typescript/lessons/5");
+  });
+
+  it("falls back to Browse Courses when a reply's data lost the thread fields", () => {
+    expect(
+      notificationDeepLink("comment-reply-posted", { courseTitle: "Lost" })
+    ).toBe("/courses");
+  });
+
   it("sends a course rating to the Instructor's analytics", () => {
     expect(notificationDeepLink("course-rating-left")).toBe(
       "/instructor/analytics"
@@ -83,6 +110,136 @@ describe("formatNotificationRow", () => {
     };
 
     expect(formatNotificationRow(input).state).toBe("read");
+  });
+
+  it("formats an approved Refund Request decision into actor, action, course and link", () => {
+    const input: NotificationRowInput = {
+      id: "item-3",
+      workflowKey: "refund-request-decided",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: "https://cdn.example.com/alex.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        decision: "approved",
+        note: "Refunded in full.",
+        courseTitle: "Introduction to TypeScript",
+        amountPaid: 7900,
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-3",
+      state: "unread",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: "https://cdn.example.com/alex.png",
+      actionText: "approved your refund request",
+      contextLine: "Introduction to TypeScript",
+      iconType: "refund",
+      deepLink: "/settings",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a declined Refund Request decision into actor, action, course and link", () => {
+    const input: NotificationRowInput = {
+      id: "item-4",
+      workflowKey: "refund-request-decided",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: null,
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        decision: "declined",
+        note: "You have completed most of the course.",
+        courseTitle: "Introduction to TypeScript",
+        amountPaid: 7900,
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-4",
+      state: "unread",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: null,
+      actionText: "declined your refund request",
+      contextLine: "Introduction to TypeScript",
+      iconType: "refund",
+      deepLink: "/settings",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a lesson comment into actor, action, course and the Q&A queue link", () => {
+    const input: NotificationRowInput = {
+      id: "item-6",
+      workflowKey: "lesson-comment-posted",
+      actorName: "Emma Wilson",
+      actorAvatarUrl: "https://cdn.example.com/emma.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseTitle: "Introduction to TypeScript",
+        lessonTitle: "Union Narrowing",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-6",
+      state: "unread",
+      actorName: "Emma Wilson",
+      actorAvatarUrl: "https://cdn.example.com/emma.png",
+      actionText: "commented on your lesson",
+      contextLine: "Introduction to TypeScript",
+      iconType: "comment",
+      deepLink: "/instructor/questions",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats a comment reply into actor, action, course and the lesson thread link", () => {
+    const input: NotificationRowInput = {
+      id: "item-7",
+      workflowKey: "comment-reply-posted",
+      actorName: "Sarah Chen",
+      actorAvatarUrl: "https://cdn.example.com/sarah.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseTitle: "Introduction to TypeScript",
+        courseSlug: "introduction-to-typescript",
+        lessonId: 5,
+        lessonTitle: "Union Narrowing",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-7",
+      state: "unread",
+      actorName: "Sarah Chen",
+      actorAvatarUrl: "https://cdn.example.com/sarah.png",
+      actionText: "replied to your comment",
+      contextLine: "Introduction to TypeScript",
+      iconType: "reply",
+      deepLink: "/courses/introduction-to-typescript/lessons/5",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("falls back to the decided action text when the decision did not travel with the Notification", () => {
+    const input: NotificationRowInput = {
+      id: "item-5",
+      workflowKey: "refund-request-decided",
+      actorName: null,
+      actorAvatarUrl: null,
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: null,
+    };
+
+    expect(formatNotificationRow(input).actionText).toBe(
+      "decided your refund request"
+    );
   });
 
   it("survives a Notification that arrives without an actor or context", () => {
