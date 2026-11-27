@@ -11,6 +11,10 @@ describe("notification deep links", () => {
     expect(notificationDeepLink("refund-request-raised")).toBe("/admin/refunds");
   });
 
+  it("sends a claimed Seat to the Team Admin's team page", () => {
+    expect(notificationDeepLink("seat-claimed")).toBe("/team");
+  });
+
   it("falls back to Browse Courses for a workflow the map does not know", () => {
     expect(notificationDeepLink("some-future-event")).toBe("/courses");
   });

@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import * as schema from "~/db/schema";
 import { UserRole } from "~/db/schema";
-import { buildRefundRequestRaisedNotification } from "./notifications.server";
+import {
+  buildRefundRequestRaisedNotification,
+  buildSeatClaimedNotification,
+} from "./notifications.server";
 
 type TestDb = ReturnType<typeof createTestDb>;
 
@@ -168,6 +172,135 @@ describe("buildRefundRequestRaisedNotification", () => {
       999999,
       base.user.id,
       "It was not what I expected.",
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+});
+
+describe("buildSeatClaimedNotification", () => {
+  // A buyer of a Team Licence — resolved through the Seat's Purchase, data
+  // and not a role label: the seeded Team Admins hold the Student role.
+  function addUser(name: string, email: string, avatarUrl: string | null = null) {
+    return db
+      .insert(schema.users)
+      .values({ name, email, role: UserRole.Student, avatarUrl })
+      .returning()
+      .get();
+  }
+
+  function buyTeamLicence(buyerId: number) {
+    const team = db.insert(schema.teams).values({}).returning().get();
+    const purchase = db
+      .insert(schema.purchases)
+      .values({
+        userId: buyerId,
+        courseId: base.course.id,
+        amountPaid: 39500,
+        createdAt: daysBefore(3),
+      })
+      .returning()
+      .get();
+    const seat = db
+      .insert(schema.coupons)
+      .values({
+        teamId: team.id,
+        courseId: base.course.id,
+        code: "TEAM-TEST-01",
+        purchaseId: purchase.id,
+      })
+      .returning()
+      .get();
+    return { team, purchase, seat };
+  }
+
+  function claimSeat(seatId: number, claimerId: number) {
+    db.update(schema.coupons)
+      .set({ redeemedByUserId: claimerId, redeemedAt: daysBefore(0) })
+      .where(eq(schema.coupons.id, seatId))
+      .run();
+  }
+
+  it("notifies the buyer of the Seat's Purchase, never the claimer", () => {
+    const buyer = addUser("Bossy Buyer", "bossy@example.com");
+    const claimer = addUser("Casey Claimer", "casey@example.com");
+    const { seat } = buyTeamLicence(buyer.id);
+    claimSeat(seat.id, claimer.id);
+
+    const notification = buildSeatClaimedNotification(
+      db,
+      seat.code,
+      claimer.id,
+      NOW
+    );
+
+    expect(notification).not.toBeNull();
+    expect(notification?.recipients).toEqual([
+      {
+        id: buyer.id,
+        name: "Bossy Buyer",
+        email: "bossy@example.com",
+        avatarUrl: null,
+      },
+    ]);
+    expect(
+      notification?.recipients.map((recipient) => recipient.id)
+    ).not.toContain(claimer.id);
+    expect(notification?.workflowKey).toBe("seat-claimed");
+  });
+
+  it("carries the claimer as the actor with the course title and the claimer's name", () => {
+    const buyer = addUser("Bossy Buyer", "bossy@example.com");
+    const claimer = addUser(
+      "Casey Claimer",
+      "casey@example.com",
+      "https://cdn.example.com/casey.png"
+    );
+    const { seat } = buyTeamLicence(buyer.id);
+    claimSeat(seat.id, claimer.id);
+
+    const notification = buildSeatClaimedNotification(
+      db,
+      seat.code,
+      claimer.id,
+      NOW
+    );
+
+    expect(notification?.actor).toEqual({
+      id: claimer.id,
+      name: "Casey Claimer",
+      email: "casey@example.com",
+      avatarUrl: "https://cdn.example.com/casey.png",
+    });
+    expect(notification?.data).toEqual({
+      courseTitle: base.course.title,
+      claimerName: "Casey Claimer",
+    });
+  });
+
+  it("builds nothing when the buyer claims their own Seat", () => {
+    const buyer = addUser("Bossy Buyer", "bossy@example.com");
+    const { seat } = buyTeamLicence(buyer.id);
+    claimSeat(seat.id, buyer.id);
+
+    const notification = buildSeatClaimedNotification(
+      db,
+      seat.code,
+      buyer.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing for a code that is not a Seat", () => {
+    const claimer = addUser("Casey Claimer", "casey@example.com");
+
+    const notification = buildSeatClaimedNotification(
+      db,
+      "NO-SUCH-SEAT",
+      claimer.id,
       NOW
     );
 

@@ -16,6 +16,10 @@
 // raises one. The tracer bullet of the notification system.
 export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
+// "Seat claimed" — the Team Admin who bought the Team Licence is notified
+// when someone claims one of its Seats.
+export const SEAT_CLAIMED_WORKFLOW_KEY = "seat-claimed";
+
 // ─── Deep links ───
 // One target per Event: clicking a Notification takes the recipient to the
 // thing it is about. The map is keyed by workflow key and covered by name in
@@ -25,6 +29,7 @@ export const REFUND_REQUEST_RAISED_WORKFLOW_KEY = "refund-request-raised";
 
 const NOTIFICATION_DEEP_LINKS: Record<string, string> = {
   [REFUND_REQUEST_RAISED_WORKFLOW_KEY]: "/admin/refunds",
+  [SEAT_CLAIMED_WORKFLOW_KEY]: "/team",
 };
 
 const FALLBACK_DEEP_LINK = "/courses";

@@ -1,8 +1,11 @@
 import { asc, eq } from "drizzle-orm";
-import { courses, purchases, users, UserRole } from "~/db/schema";
+import { coupons, courses, purchases, users, UserRole } from "~/db/schema";
 import type { Db } from "~/lib/refunds.server";
 import type { UserIdentity, WorkflowTrigger } from "~/lib/knock.server";
-import { REFUND_REQUEST_RAISED_WORKFLOW_KEY } from "~/lib/notification-rows";
+import {
+  REFUND_REQUEST_RAISED_WORKFLOW_KEY,
+  SEAT_CLAIMED_WORKFLOW_KEY,
+} from "~/lib/notification-rows";
 
 // ─── Notification payload builders ───
 // One pure, db-first builder per catalog Event: it reads the database to
@@ -84,6 +87,73 @@ export function buildRefundRequestRaisedNotification(
     data: {
       courseTitle: course.title,
       reason,
+    },
+  };
+}
+
+/**
+ * "Seat claimed": someone has just claimed a Seat on the redeem page, and
+ * the Team Admin who bought that Team Licence hears about it. The buyer is
+ * resolved through the Seat's Purchase — data, not a role label — so the
+ * redeem action passes only the identifiers it holds (the code and the
+ * claimer), and this builder re-derives the rest from the database. The
+ * claimer is the actor and never the recipient: a Team Licence grants its
+ * buyer no Enrollment, so a buyer can claim one of their own Seats, and
+ * that claim notifies nobody.
+ */
+export function buildSeatClaimedNotification(
+  db: Db,
+  code: string,
+  claimerId: number,
+  now: Date
+): WorkflowTrigger | null {
+  const seat = db.select().from(coupons).where(eq(coupons.code, code)).get();
+  if (!seat) return null;
+
+  // The Seat's Purchase is the only path to the recipient: its buyer is
+  // the Team Admin who bought the Team Licence.
+  const purchase = db
+    .select()
+    .from(purchases)
+    .where(eq(purchases.id, seat.purchaseId))
+    .get();
+  if (!purchase) return null;
+
+  // The claimer must be the one who redeemed this Seat — the builder
+  // runs after the claim and re-derives, never trusting the caller.
+  if (seat.redeemedByUserId !== claimerId) return null;
+
+  const buyer = db
+    .select()
+    .from(users)
+    .where(eq(users.id, purchase.userId))
+    .get();
+  const claimer = db
+    .select()
+    .from(users)
+    .where(eq(users.id, claimerId))
+    .get();
+  const course = db
+    .select()
+    .from(courses)
+    .where(eq(courses.id, seat.courseId))
+    .get();
+
+  if (!buyer || !claimer || !course) return null;
+
+  // The standing rule: the actor never receives the Notification for
+  // their own action.
+  if (buyer.id === claimer.id) return null;
+
+  return {
+    workflowKey: SEAT_CLAIMED_WORKFLOW_KEY,
+    recipients: [identityOf(buyer)],
+    actor: identityOf(claimer),
+    // Flat scalars only: the feed's compact mode strips nested arrays and
+    // objects out of item data.
+    data: {
+      courseTitle: course.title,
+      claimerName: claimer.name,
     },
   };
 }

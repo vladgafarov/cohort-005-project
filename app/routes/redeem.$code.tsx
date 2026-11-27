@@ -7,6 +7,8 @@ import { getCurrentUserId } from "~/lib/session";
 import { resolveCountry } from "~/lib/country.server";
 import { parseParams, parseFormData } from "~/lib/validation";
 import { getSeatAvailability } from "~/lib/refunds.server";
+import { triggerWorkflow } from "~/lib/knock.server";
+import { buildSeatClaimedNotification } from "~/lib/notifications.server";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Ticket, AlertCircle, CheckCircle2, Globe } from "lucide-react";
@@ -203,6 +205,20 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (!result.ok) {
     return data({ error: result.error }, { status: 400 });
   }
+
+  // The claimed Seat announces itself to the Team Admin who bought the
+  // Team Licence, deep-linking them to the team page to see their team
+  // fill up. `redeemCoupon` returns only the enrollment, so the builder
+  // re-derives the buyer from the code through the Seat's Purchase. A
+  // failed trigger is logged and swallowed inside the wrapper, so the
+  // claim the user just made always succeeds.
+  const notification = buildSeatClaimedNotification(
+    db,
+    code,
+    currentUserId,
+    new Date()
+  );
+  if (notification) await triggerWorkflow(notification);
 
   const course = getCourseById(result.enrollment.courseId);
   if (!course) {
