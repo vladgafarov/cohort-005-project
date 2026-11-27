@@ -16,6 +16,8 @@ import {
 } from "~/db/schema";
 import { db } from "~/db";
 import { eq, or, sql } from "drizzle-orm";
+import { triggerWorkflow } from "~/lib/knock.server";
+import { buildCourseStatusChangedNotification } from "~/lib/notifications.server";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -39,6 +41,10 @@ const adminCourseActionSchema = z.discriminatedUnion("intent", [
 
 function getUserById(id: number) {
   return db.select().from(users).where(eq(users.id, id)).get();
+}
+
+function getCourseById(id: number) {
+  return db.select().from(courses).where(eq(courses.id, id)).get();
 }
 
 function getAllCourses() {
@@ -139,7 +145,26 @@ export async function action({ request }: Route.ActionArgs) {
   const { intent } = parsed.data;
 
   if (intent === "update-status") {
+    // The pre-update row carries the from-status: the Notification reports
+    // a transition, and the builder stays silent unless the course really
+    // landed in Published or Archived.
+    const course = getCourseById(parsed.data.courseId);
     updateCourseStatus(parsed.data.courseId, parsed.data.status);
+
+    // The course's Instructor learns their course's status changed without
+    // going to look for it. A failed trigger is logged and swallowed inside
+    // the wrapper, so the status change always succeeds.
+    const notification = course
+      ? buildCourseStatusChangedNotification(
+          db,
+          parsed.data.courseId,
+          course.status,
+          parsed.data.status,
+          currentUserId,
+          new Date()
+        )
+      : null;
+    if (notification) await triggerWorkflow(notification);
     return { success: true };
   }
 
