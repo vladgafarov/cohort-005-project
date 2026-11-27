@@ -267,6 +267,82 @@ describe("formatNotificationRow", () => {
     });
   });
 
+  it("formats a published course into actor, action, course and the course home link", () => {
+    const input: NotificationRowInput = {
+      id: "item-9",
+      workflowKey: "course-status-changed",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: "https://cdn.example.com/alex.png",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseId: 4,
+        courseTitle: "Shipping with Docker and Kubernetes",
+        fromStatus: "draft",
+        toStatus: "published",
+        status: "published",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-9",
+      state: "unread",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: "https://cdn.example.com/alex.png",
+      actionText: "published your course",
+      contextLine: "Shipping with Docker and Kubernetes",
+      iconType: "course",
+      deepLink: "/instructor/4",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("formats an archived course with the archive's own action text", () => {
+    const input: NotificationRowInput = {
+      id: "item-10",
+      workflowKey: "course-status-changed",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: null,
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: {
+        courseId: 1,
+        courseTitle: "Introduction to TypeScript",
+        fromStatus: "published",
+        toStatus: "archived",
+        status: "archived",
+      },
+    };
+
+    expect(formatNotificationRow(input)).toEqual({
+      id: "item-10",
+      state: "unread",
+      actorName: "Alex Rivera",
+      actorAvatarUrl: null,
+      actionText: "archived your course",
+      contextLine: "Introduction to TypeScript",
+      iconType: "course",
+      deepLink: "/instructor/1",
+      insertedAt: "2026-11-27T10:00:00.000Z",
+    });
+  });
+
+  it("falls back to the course-status action text when the status did not travel with the Notification", () => {
+    const input: NotificationRowInput = {
+      id: "item-11",
+      workflowKey: "course-status-changed",
+      actorName: null,
+      actorAvatarUrl: null,
+      insertedAt: "2026-11-27T10:00:00.000Z",
+      readAt: null,
+      data: null,
+    };
+
+    expect(formatNotificationRow(input).actionText).toBe(
+      "changed your course's status"
+    );
+  });
+
   it("falls back to the decided action text when the decision did not travel with the Notification", () => {
     const input: NotificationRowInput = {
       id: "item-5",

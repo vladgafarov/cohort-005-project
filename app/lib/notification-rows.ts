@@ -108,6 +108,7 @@ export type NotificationIconType =
   | "reply"
   | "star"
   | "seat"
+  | "course"
   | "bell";
 
 export type NotificationRowInput = {
@@ -139,6 +140,7 @@ const NOTIFICATION_ACTION_TEXTS: Record<string, string> = {
   [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: "replied to your comment",
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "rated your course",
   [SEAT_CLAIMED_WORKFLOW_KEY]: "claimed a Seat",
+  [COURSE_STATUS_CHANGED_WORKFLOW_KEY]: "changed your course's status",
 };
 
 const FALLBACK_ACTION_TEXT = "sent you a notification";
@@ -156,11 +158,27 @@ const REFUND_DECISION_ACTION_TEXTS: Record<string, string> = {
   declined: "declined your refund request",
 };
 
+// A publish and an archive are one Event whose action text varies with
+// where the Platform Admin moved the course, so the row reads the landing
+// status out of the data; the static map above holds the text for a
+// Notification that arrived without it.
+const COURSE_STATUS_ACTION_TEXTS: Record<string, string> = {
+  published: "published your course",
+  archived: "archived your course",
+};
+
 function actionTextFrom(input: NotificationRowInput): string {
   if (input.workflowKey === REFUND_REQUEST_DECIDED_WORKFLOW_KEY) {
     const decision = input.data?.decision;
     if (typeof decision === "string") {
       const text = REFUND_DECISION_ACTION_TEXTS[decision];
+      if (text) return text;
+    }
+  }
+  if (input.workflowKey === COURSE_STATUS_CHANGED_WORKFLOW_KEY) {
+    const status = input.data?.status;
+    if (typeof status === "string") {
+      const text = COURSE_STATUS_ACTION_TEXTS[status];
       if (text) return text;
     }
   }
@@ -174,6 +192,7 @@ const NOTIFICATION_ICON_TYPES: Record<string, NotificationIconType> = {
   [COMMENT_REPLY_POSTED_WORKFLOW_KEY]: "reply",
   [COURSE_RATING_LEFT_WORKFLOW_KEY]: "star",
   [SEAT_CLAIMED_WORKFLOW_KEY]: "seat",
+  [COURSE_STATUS_CHANGED_WORKFLOW_KEY]: "course",
 };
 
 const FALLBACK_ICON_TYPE: NotificationIconType = "bell";

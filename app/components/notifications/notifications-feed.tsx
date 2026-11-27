@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   Bell,
+  BookOpen,
   Check,
   CheckCheck,
   MessageSquare,
@@ -69,6 +70,9 @@ function eventIcon(iconType: NotificationIconType): ReactNode {
     // The same ticket the redeem page shows for a Seat's coupon code.
     case "seat":
       return <Ticket className="size-3" />;
+    // The same book the app marks every course with.
+    case "course":
+      return <BookOpen className="size-3" />;
     case "bell":
       return <Bell className="size-3" />;
   }

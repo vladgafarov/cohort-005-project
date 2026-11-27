@@ -995,4 +995,89 @@ describe("buildCourseStatusChangedNotification", () => {
       avatarUrl: null,
     });
   });
+
+  it("carries the from-status, the to-status and the course as the context", () => {
+    const alex = addAdmin("Alex Admin");
+
+    const notification = buildCourseStatusChangedNotification(
+      db,
+      base.course.id,
+      CourseStatus.Published,
+      CourseStatus.Archived,
+      alex.id,
+      NOW
+    );
+
+    expect(notification?.data).toEqual({
+      courseId: base.course.id,
+      courseTitle: base.course.title,
+      fromStatus: CourseStatus.Published,
+      toStatus: CourseStatus.Archived,
+      status: CourseStatus.Archived,
+    });
+  });
+
+  it("builds nothing for a transition that lands in Draft", () => {
+    const alex = addAdmin("Alex Admin");
+
+    const notification = buildCourseStatusChangedNotification(
+      db,
+      base.course.id,
+      CourseStatus.Published,
+      CourseStatus.Draft,
+      alex.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing when the course already has the chosen status", () => {
+    const alex = addAdmin("Alex Admin");
+
+    const notification = buildCourseStatusChangedNotification(
+      db,
+      base.course.id,
+      CourseStatus.Published,
+      CourseStatus.Published,
+      alex.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("never notifies a Platform Admin acting on their own course", () => {
+    const alex = addAdmin("Alex Admin");
+    db.update(schema.courses)
+      .set({ instructorId: alex.id })
+      .where(eq(schema.courses.id, base.course.id))
+      .run();
+
+    const notification = buildCourseStatusChangedNotification(
+      db,
+      base.course.id,
+      CourseStatus.Draft,
+      CourseStatus.Published,
+      alex.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
+
+  it("builds nothing for a course that does not exist", () => {
+    const alex = addAdmin("Alex Admin");
+
+    const notification = buildCourseStatusChangedNotification(
+      db,
+      999999,
+      CourseStatus.Draft,
+      CourseStatus.Published,
+      alex.id,
+      NOW
+    );
+
+    expect(notification).toBeNull();
+  });
 });

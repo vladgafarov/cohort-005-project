@@ -447,6 +447,18 @@ export function buildCourseStatusChangedNotification(
   actorId: number,
   now: Date
 ): WorkflowTrigger | null {
+  // The gate: the Event fires only on a real transition that lands the
+  // course in Published or Archived — a landing in Draft is bookkeeping,
+  // not news, and re-picking the status the course already has is not a
+  // transition at all.
+  if (
+    (toStatus !== CourseStatus.Published &&
+      toStatus !== CourseStatus.Archived) ||
+    fromStatus === toStatus
+  ) {
+    return null;
+  }
+
   const course = db
     .select()
     .from(courses)
@@ -460,6 +472,12 @@ export function buildCourseStatusChangedNotification(
     .get();
 
   if (!course || !actor || !instructor) return null;
+
+  // The standing rule: the actor never receives the Notification for
+  // their own action. A Platform Admin who also teaches the course is
+  // actor and recipient in one — the screen they are already on is their
+  // confirmation.
+  if (instructor.id === actor.id) return null;
 
   return {
     workflowKey: COURSE_STATUS_CHANGED_WORKFLOW_KEY,
