@@ -72,6 +72,8 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS bookmarks;
+    DROP TABLE IF EXISTS notes;
     DROP TABLE IF EXISTS comments;
     DROP TABLE IF EXISTS course_ratings;
     DROP TABLE IF EXISTS video_watch_events;
@@ -2068,6 +2070,71 @@ This course is still in draft while the cluster examples are rewritten against t
 
   console.log(`Created ${countRows(schema.lessonProgress)} lesson progress records.`);
 
+  // ─── Bookmarks and Notes ───
+  // Seeded for the named students so the Saved page has something to show.
+
+  db.insert(schema.bookmarks)
+    .values([
+      {
+        userId: students[0].id,
+        lessonId: course1LessonIds[0],
+        createdAt: daysAgo(21),
+      },
+      {
+        userId: students[0].id,
+        lessonId: course2LessonIds[1],
+        createdAt: daysAgo(14),
+      },
+      {
+        userId: students[2].id,
+        lessonId: course1LessonIds[2],
+        createdAt: daysAgo(11),
+      },
+      {
+        userId: students[4].id,
+        lessonId: course1LessonIds[0],
+        createdAt: daysAgo(9),
+      },
+    ])
+    .run();
+
+  db.insert(schema.notes)
+    .values([
+      {
+        userId: students[0].id,
+        lessonId: course1LessonIds[0],
+        body: "Come back to the generics section — the constraint syntax finally clicked.",
+        createdAt: daysAgo(21),
+        updatedAt: daysAgo(20),
+      },
+      {
+        userId: students[0].id,
+        lessonId: course2LessonIds[1],
+        body: "Try the retry example against the flaky endpoint before the next lesson.",
+        createdAt: daysAgo(15),
+        updatedAt: daysAgo(14),
+      },
+      {
+        userId: students[2].id,
+        lessonId: course1LessonIds[2],
+        body: "Ask in the discussion whether narrowing works the same way with unions.",
+        createdAt: daysAgo(11),
+        updatedAt: daysAgo(10),
+      },
+      {
+        userId: students[4].id,
+        lessonId: course1LessonIds[0],
+        body: "Set up the editor shortcuts before starting the next module.",
+        createdAt: daysAgo(9),
+        updatedAt: daysAgo(9),
+      },
+    ])
+    .run();
+
+  console.log(
+    `Created ${countRows(schema.bookmarks)} bookmarks and ${countRows(schema.notes)} notes.`
+  );
+
   // ─── Quiz Attempts ───
 
   // Helper to record a quiz attempt with answers
@@ -2847,6 +2914,9 @@ This course is still in draft while the cluster examples are rewritten against t
   console.log(`  Enrollments: ${countRows(schema.enrollments)}`);
   console.log(`  Course ratings: ${countRows(schema.courseRatings)}`);
   console.log(`  Lesson comments: ${countRows(schema.comments)}`);
+  console.log(
+    `  Bookmarks: ${countRows(schema.bookmarks)}, notes: ${countRows(schema.notes)}`
+  );
   console.log(
     `  Lesson progress: ${countRows(schema.lessonProgress)} (${countRows(schema.lessonProgress, eq(schema.lessonProgress.status, LessonProgressStatus.Completed))} completed)`
   );
