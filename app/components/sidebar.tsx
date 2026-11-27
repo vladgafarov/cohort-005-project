@@ -41,6 +41,10 @@ interface SidebarProps {
   currentUser: CurrentUser | null;
   recentCourses?: RecentCourse[];
   isTeamAdmin?: boolean;
+  // PROTOTYPE (wayfinder #6) — remove before merge. Optional slots the layout
+  // fills with notification-center variants (?variant= A/B/C).
+  navSlot?: React.ReactNode;
+  footerSlot?: React.ReactNode;
 }
 
 interface NavItem {
@@ -117,6 +121,8 @@ export function Sidebar({
   currentUser,
   recentCourses = [],
   isTeamAdmin = false,
+  navSlot,
+  footerSlot,
 }: SidebarProps) {
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
@@ -162,6 +168,8 @@ export function Sidebar({
               {item.label}
             </NavLink>
           ))}
+        {/* PROTOTYPE (wayfinder #6) — remove before merge */}
+        {navSlot}
         {isTeamAdmin && (
           <NavLink
             to="/team"
@@ -219,7 +227,9 @@ export function Sidebar({
         </div>
       )}
 
+      {/* PROTOTYPE (wayfinder #6) — remove before merge */}
       <div className="border-t border-sidebar-border p-3 space-y-1">
+        {footerSlot}
         <button
           onClick={toggleDarkMode}
           className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

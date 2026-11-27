@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { z } from "zod";
 import type { Route } from "./+types/settings";
@@ -10,13 +10,21 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
-import { UserRole, RefundStatus, users } from "~/db/schema";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "~/components/ui/tabs";
+import { UserRole, RefundStatus, users, teamMembers, TeamMemberRole } from "~/db/schema";
 import { AlertTriangle } from "lucide-react";
 import { data, isRouteErrorResponse, Link } from "react-router";
 import { db } from "~/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { formatPrice } from "~/lib/utils";
 import { listRefundRequestsForBuyer } from "~/lib/refunds.server";
+// PROTOTYPE (wayfinder #6) — remove before merge
+import { PrototypeNotificationPrefs } from "~/components/prototype-notification-prefs";
 
 const settingsSchema = z.object({
   name: z.string().trim().min(1, "Name cannot be empty."),
@@ -51,6 +59,19 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const refundRequests = listRefundRequestsForBuyer(db, currentUserId);
 
+  // PROTOTYPE (wayfinder #6) — remove before merge. Team Admin flag so the
+  // notification-prefs fixtures can show the seat-claimed toggle.
+  const teamAdminMembership = db
+    .select()
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.userId, currentUser.id),
+        eq(teamMembers.role, TeamMemberRole.Admin)
+      )
+    )
+    .get();
+
   return {
     user: {
       id: currentUser.id,
@@ -60,6 +81,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       role: currentUser.role,
     },
     refundRequests,
+    isTeamAdmin: !!teamAdminMembership,
   };
 }
 
@@ -98,7 +120,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Settings({ loaderData }: Route.ComponentProps) {
-  const { user, refundRequests } = loaderData;
+  const { user, refundRequests, isTeamAdmin } = loaderData;
   const openCount = refundRequests.filter(
     (refundRequest) => refundRequest.status === RefundStatus.Open
   ).length;
@@ -115,24 +137,18 @@ export default function Settings({ loaderData }: Route.ComponentProps) {
     }
   }, [fetcher.state, fetcher.data]);
 
-  return (
-    <div className="mx-auto max-w-7xl p-6 lg:p-8">
-      {/* Breadcrumb */}
-      <nav className="mb-6 text-sm text-muted-foreground">
-        <Link to="/" className="hover:text-foreground">
-          Home
-        </Link>
-        <span className="mx-2">/</span>
-        <span className="text-foreground">Settings</span>
-      </nav>
+  // PROTOTYPE (wayfinder #6) — remove before merge. ?prefs= renders a
+  // notification-preferences design to react to (P1 card / P2 grouped
+  // sections / P3 a Notifications tab wrapping the profile below).
+  const [searchParams] = useSearchParams();
+  const rawPrefsVariant = searchParams.get("prefs");
+  const prefsVariant =
+    rawPrefsVariant === "P1" || rawPrefsVariant === "P2" || rawPrefsVariant === "P3"
+      ? rawPrefsVariant
+      : null;
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="mt-1 text-muted-foreground">
-          Update your profile details
-        </p>
-      </div>
-
+  const profileCards = (
+    <>
       <Card className="max-w-md">
         <CardHeader>
           <h2 className="text-lg font-semibold">Profile</h2>
@@ -234,6 +250,55 @@ export default function Settings({ loaderData }: Route.ComponentProps) {
             ))}
           </CardContent>
         </Card>
+      )}
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl p-6 lg:p-8">
+      {/* Breadcrumb */}
+      <nav className="mb-6 text-sm text-muted-foreground">
+        <Link to="/" className="hover:text-foreground">
+          Home
+        </Link>
+        <span className="mx-2">/</span>
+        <span className="text-foreground">Settings</span>
+      </nav>
+
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Settings</h1>
+        <p className="mt-1 text-muted-foreground">
+          Update your profile details
+        </p>
+      </div>
+
+      {prefsVariant === "P3" ? (
+        // PROTOTYPE (wayfinder #6) — P3: notifications get their own tab.
+        <Tabs defaultValue="notifications" className="max-w-2xl">
+          <TabsList>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+          </TabsList>
+          <TabsContent value="notifications">
+            <PrototypeNotificationPrefs
+              variant="P3"
+              role={user.role}
+              isTeamAdmin={isTeamAdmin}
+            />
+          </TabsContent>
+          <TabsContent value="profile">{profileCards}</TabsContent>
+        </Tabs>
+      ) : (
+        <>
+          {profileCards}
+          {prefsVariant && (
+            <PrototypeNotificationPrefs
+              variant={prefsVariant}
+              role={user.role}
+              isTeamAdmin={isTeamAdmin}
+            />
+          )}
+        </>
       )}
     </div>
   );

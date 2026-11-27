@@ -1,4 +1,5 @@
 import { Outlet } from "react-router";
+import { useSearchParams } from "react-router";
 import type { Route } from "./+types/layout.app";
 import { Sidebar } from "~/components/sidebar";
 import { DevUI } from "~/components/dev-ui";
@@ -18,6 +19,14 @@ import {
   TeamMemberRole,
   LessonProgressStatus,
 } from "~/db/schema";
+// PROTOTYPE (wayfinder #6) — remove before merge
+import {
+  PrototypeBellDropdown,
+  PrototypeBellDrawer,
+  PrototypeNavNotifications,
+  PrototypeNotificationProvider,
+} from "~/components/prototype-notification-center";
+import { PrototypeSwitcher } from "~/components/prototype-switcher";
 
 function getAllUsers() {
   return db.select().from(users).all();
@@ -227,12 +236,32 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     isTeamAdmin: userIsTeamAdmin,
   } = loaderData;
 
-  return (
+  // PROTOTYPE (wayfinder #6) — remove before merge. ?variant= picks a
+  // notification-center design to react to (A dropdown / B page / C drawer);
+  // absent or unknown = today's app, untouched.
+  const [searchParams] = useSearchParams();
+  const rawVariant = searchParams.get("variant");
+  const centerVariant =
+    rawVariant === "A" || rawVariant === "B" || rawVariant === "C"
+      ? rawVariant
+      : null;
+
+  const app = (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
         currentUser={currentUser}
         recentCourses={recentCourses}
         isTeamAdmin={userIsTeamAdmin}
+        navSlot={
+          centerVariant === "B" ? <PrototypeNavNotifications /> : null
+        }
+        footerSlot={
+          centerVariant === "A" ? (
+            <PrototypeBellDropdown />
+          ) : centerVariant === "C" ? (
+            <PrototypeBellDrawer />
+          ) : null
+        }
       />
       <main className="flex-1 overflow-y-auto">
         <Outlet />
@@ -245,6 +274,18 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         countries={countries}
       />
       <Toaster position="bottom-right" richColors closeButton />
+      <PrototypeSwitcher />
     </div>
+  );
+
+  if (!centerVariant) return app;
+
+  return (
+    <PrototypeNotificationProvider
+      role={currentUser?.role ?? null}
+      isTeamAdmin={userIsTeamAdmin}
+    >
+      {app}
+    </PrototypeNotificationProvider>
   );
 }
