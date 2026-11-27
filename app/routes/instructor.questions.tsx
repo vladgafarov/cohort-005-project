@@ -14,6 +14,8 @@ import { AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
 import { cn, daysSince, formatRelativeTime } from "~/lib/utils";
 import { MIN_COMMENT_LENGTH, MAX_COMMENT_LENGTH } from "~/lib/comments";
 import { parseFormData } from "~/lib/validation";
+import { triggerWorkflow } from "~/lib/knock.server";
+import { buildCommentReplyPostedNotification } from "~/lib/notifications.server";
 import { db } from "~/db";
 import {
   comments,
@@ -207,9 +209,17 @@ export async function action({ request }: Route.ActionArgs) {
   // instructor, or an admin.
   const access = await requireStaff(request, course.courseId);
 
+  // requireStaff has thrown unless a staff user is signed in; narrowing the
+  // id here keeps the non-null assertion out of this action's code.
+  const staffId = access.userId;
+  if (staffId === null) {
+    throw data("Select a user from the DevUI panel.", { status: 401 });
+  }
+
+  let reply: ReturnType<typeof createComment>;
   try {
-    createComment(
-      access.userId!,
+    reply = createComment(
+      staffId,
       question.lessonId,
       question.id,
       parsed.data.body
@@ -220,6 +230,18 @@ export async function action({ request }: Route.ActionArgs) {
     }
     throw error;
   }
+
+  // The answer lands as a reply to the student's question, so the Student
+  // who asked — the parent comment's author — gets the row and can keep
+  // the conversation going without patrolling the lesson. A failed trigger
+  // is logged and swallowed inside the wrapper, so the answer always
+  // succeeds.
+  const notification = buildCommentReplyPostedNotification(
+    db,
+    reply.id,
+    new Date()
+  );
+  if (notification) await triggerWorkflow(notification);
 
   return { ok: true };
 }

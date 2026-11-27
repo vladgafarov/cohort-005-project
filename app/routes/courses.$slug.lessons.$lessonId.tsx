@@ -55,6 +55,11 @@ import { data, isRouteErrorResponse } from "react-router";
 import { z } from "zod";
 import { COUNTRIES } from "~/lib/ppp";
 import { parseFormData, parseParams } from "~/lib/validation";
+import { triggerWorkflow } from "~/lib/knock.server";
+import {
+  buildCommentReplyPostedNotification,
+  buildLessonCommentPostedNotification,
+} from "~/lib/notifications.server";
 
 const lessonParamsSchema = z.object({
   slug: z.string().min(1),
@@ -900,12 +905,23 @@ export async function action({ params, request }: Route.ActionArgs) {
         if (!parsed.success) {
           return { ok: false, error: "Enter a comment before posting." };
         }
-        createComment(
+        const comment = createComment(
           currentUserId,
           lessonId,
           parsed.data.parentId ?? null,
           parsed.data.body
         );
+
+        // A top-level comment tells the course's Instructor about a fresh
+        // question; a reply tells the parent comment's author, whoever
+        // they are. A failed trigger is logged and swallowed inside the
+        // wrapper, so the comment always succeeds.
+        const notification =
+          comment.parentId === null
+            ? buildLessonCommentPostedNotification(db, comment.id, new Date())
+            : buildCommentReplyPostedNotification(db, comment.id, new Date());
+        if (notification) await triggerWorkflow(notification);
+
         return { ok: true };
       }
 

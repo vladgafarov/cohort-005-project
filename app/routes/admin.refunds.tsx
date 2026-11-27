@@ -22,6 +22,8 @@ import {
 } from "~/lib/refunds.server";
 import { RULE_BREAK_LABELS } from "~/lib/refund-rules";
 import { sendEmail } from "~/lib/mailer.server";
+import { buildRefundRequestDecidedNotification } from "~/lib/notifications.server";
+import { triggerWorkflow } from "~/lib/knock.server";
 
 const refundFilterSchema = z
   .nativeEnum(RefundStatus)
@@ -128,6 +130,31 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   await sendEmail(result.email);
+
+  // The buyer hears about the decision in-app as well; the email above
+  // stays the only email. A failed trigger is logged and swallowed, so a
+  // provider hiccup can never stop a refund being decided.
+  if (intent === "approve") {
+    const notification = buildRefundRequestDecidedNotification(
+      db,
+      refundRequestId,
+      platformAdmin.id,
+      RefundStatus.Approved,
+      note || null,
+      new Date()
+    );
+    if (notification) await triggerWorkflow(notification);
+  } else {
+    const notification = buildRefundRequestDecidedNotification(
+      db,
+      refundRequestId,
+      platformAdmin.id,
+      RefundStatus.Declined,
+      note,
+      new Date()
+    );
+    if (notification) await triggerWorkflow(notification);
+  }
 
   return {
     success: true,
